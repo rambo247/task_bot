@@ -5,13 +5,18 @@ Bot Telegram quản lý công việc đơn giản và tiện lợi, giúp bạn 
 ## ✨ Tính năng
 
 - ➕ Thêm công việc mới
-- ⏰ **Đặt nhắc nhở theo giờ** (MỚI!)
+- 📅 **Chọn ngày từ lịch trực quan** (MỚI!)
+- 🕐 **Chọn giờ dễ dàng với time picker** (MỚI!)
+- ⏰ **Đặt nhắc nhở tự động**
+- 🌍 **Hỗ trợ múi giờ (GMT+7 mặc định cho Việt Nam)**
+- 📱 **Menu tương tác với buttons** (Không cần gõ lệnh!)
 - 📝 Xem danh sách công việc
 - ✅ Đánh dấu công việc hoàn thành
 - 🗑️ Xóa công việc cụ thể
 - 🧹 Xóa toàn bộ danh sách (có xác nhận)
 - 💾 Lưu trữ riêng biệt cho từng người dùng
 - 🔔 Tự động gửi thông báo khi đến giờ nhắc
+- ⚡ Quick time select: 5m, 15m, 30m, 1h, 2h, 3h
 
 ## 📋 Yêu cầu
 
@@ -55,7 +60,43 @@ python task_bot.py
 
 ## 📱 Cách sử dụng
 
-### Các lệnh cơ bản:
+### 🎯 Sử dụng Menu (Khuyên dùng!)
+
+**Bắt đầu với `/start` để thấy menu tương tác:**
+
+```
+User: /start
+Bot: Hiển thị menu với các nút:
+     ➕ Thêm công việc | 📋 Xem danh sách
+     🌍 Đặt múi giờ   | ❓ Hướng dẫn
+```
+
+**Click nút "➕ Thêm công việc":**
+- Bot hỏi nội dung task
+- Nhập nội dung và gửi
+- Bot hiển thị các tùy chọn: đặt nhắc nhở, xem danh sách, thêm tiếp...
+
+**Click nút "⏰ Đặt nhắc nhở" khi xem task:**
+1. 📅 **Chọn ngày từ lịch** - Click vào ngày trong tháng
+2. 🕐 **Chọn giờ** - Click vào giờ (00-23)
+3. ⏱️ **Chọn phút** - Click vào phút (00, 15, 30, 45)
+4. ✅ **Hoàn tất!**
+
+**⚡ Quick Select (Chọn nhanh):**
+- Click "⏱️ 5 phút" - Nhắc sau 5 phút
+- Click "⏱️ 15 phút" - Nhắc sau 15 phút
+- Click "⏱️ 30 phút" - Nhắc sau 30 phút
+- Click "⏱️ 1 giờ" - Nhắc sau 1 giờ
+- Click "⏱️ 2 giờ" - Nhắc sau 2 giờ
+- Click "⏱️ 3 giờ" - Nhắc sau 3 giờ
+
+**🌍 Đặt múi giờ:**
+- Click nút "🌍 Đặt múi giờ"
+- Chọn: VN (GMT+7), TH (GMT+7), SG (GMT+8), JP (GMT+9), KR (GMT+9), CN (GMT+8)
+- Thời gian sẽ tự động chuyển đổi theo múi giờ của bạn
+- Click "⏱️ 3 giờ" - Nhắc sau 3 giờ
+
+### 📝 Các lệnh (Nếu thích gõ):
 
 - `/start` - Bắt đầu sử dụng bot
 - `/help` - Xem hướng dẫn chi tiết
