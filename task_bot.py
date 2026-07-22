@@ -2,6 +2,7 @@ import telebot
 import os
 import threading
 import time
+import calendar
 from datetime import datetime, timedelta
 from telebot import types
 
@@ -45,6 +46,125 @@ def to_utc_time(chat_id, local_time):
     """Chuyển giờ local của user sang UTC"""
     offset = get_user_timezone(chat_id)
     return local_time - timedelta(hours=offset)
+
+def create_calendar(chat_id, year=None, month=None):
+    """Tạo calendar keyboard để chọn ngày"""
+    user_now = get_user_time(chat_id)
+    
+    if year is None:
+        year = user_now.year
+    if month is None:
+        month = user_now.month
+    
+    markup = types.InlineKeyboardMarkup(row_width=7)
+    
+    # Header với tên tháng và năm
+    month_name = calendar.month_name[month]
+    header = types.InlineKeyboardButton(
+        f"📅 {month_name} {year}",
+        callback_data="calendar_ignore"
+    )
+    markup.row(header)
+    
+    # Navigation buttons
+    btn_prev = types.InlineKeyboardButton("◀️", callback_data=f"calendar_prev_{year}_{month}")
+    btn_today = types.InlineKeyboardButton("📍 Hôm nay", callback_data=f"calendar_today")
+    btn_next = types.InlineKeyboardButton("▶️", callback_data=f"calendar_next_{year}_{month}")
+    markup.row(btn_prev, btn_today, btn_next)
+    
+    # Days of week header
+    week_days = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+    markup.row(*[types.InlineKeyboardButton(day, callback_data="calendar_ignore") for day in week_days])
+    
+    # Calendar days
+    cal = calendar.monthcalendar(year, month)
+    for week in cal:
+        row = []
+        for day in week:
+            if day == 0:
+                row.append(types.InlineKeyboardButton(" ", callback_data="calendar_ignore"))
+            else:
+                # Kiểm tra nếu là ngày trong quá khứ
+                date = datetime(year, month, day)
+                if date.date() < user_now.date():
+                    row.append(types.InlineKeyboardButton(str(day), callback_data="calendar_ignore"))
+                else:
+                    row.append(types.InlineKeyboardButton(
+                        str(day),
+                        callback_data=f"calendar_day_{year}_{month}_{day}"
+                    ))
+        markup.row(*row)
+    
+    # Quick select buttons
+    btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="calendar_cancel")
+    markup.row(btn_cancel)
+    
+    return markup
+
+def create_time_picker(chat_id, selected_date=None, selected_hour=None):
+    """Tạo time picker keyboard để chọn giờ"""
+    markup = types.InlineKeyboardMarkup(row_width=6)
+    
+    if selected_date:
+        date_str = selected_date.strftime("%d/%m/%Y")
+        header = types.InlineKeyboardButton(
+            f"🕐 Chọn giờ - {date_str}",
+            callback_data="time_ignore"
+        )
+        markup.row(header)
+    else:
+        header = types.InlineKeyboardButton("🕐 Chọn giờ", callback_data="time_ignore")
+        markup.row(header)
+    
+    if selected_hour is None:
+        # Chọn giờ (0-23)
+        user_now = get_user_time(chat_id)
+        current_hour = user_now.hour if selected_date and selected_date.date() == user_now.date() else -1
+        
+        # Hiển thị giờ theo nhóm
+        markup.row(*[types.InlineKeyboardButton("Giờ", callback_data="time_ignore")])
+        
+        hours_rows = []
+        for h in range(24):
+            if selected_date and selected_date.date() == user_now.date() and h < current_hour:
+                continue  # Skip past hours for today
+            hours_rows.append(types.InlineKeyboardButton(
+                f"{h:02d}h",
+                callback_data=f"time_hour_{h}_{selected_date.strftime('%Y_%m_%d') if selected_date else 'today'}"
+            ))
+        
+        # Chia thành các hàng 6 nút
+        for i in range(0, len(hours_rows), 6):
+            markup.row(*hours_rows[i:i+6])
+    else:
+        # Chọn phút (0, 15, 30, 45)
+        markup.row(*[types.InlineKeyboardButton("Phút", callback_data="time_ignore")])
+        
+        minutes = [0, 15, 30, 45]
+        min_buttons = []
+        for m in minutes:
+            min_buttons.append(types.InlineKeyboardButton(
+                f"{m:02d}",
+                callback_data=f"time_minute_{selected_hour}_{m}_{selected_date.strftime('%Y_%m_%d') if selected_date else 'today'}"
+            ))
+        markup.row(*min_buttons)
+        
+        # Nút quay lại chọn giờ
+        btn_back = types.InlineKeyboardButton("🔙 Chọn lại giờ", callback_data=f"time_back_{selected_date.strftime('%Y_%m_%d') if selected_date else 'today'}")
+        markup.row(btn_back)
+    
+    # Quick time buttons
+    markup.row(types.InlineKeyboardButton("⏱️ 5 phút", callback_data="time_quick_5m"),
+               types.InlineKeyboardButton("⏱️ 15 phút", callback_data="time_quick_15m"),
+               types.InlineKeyboardButton("⏱️ 30 phút", callback_data="time_quick_30m"))
+    markup.row(types.InlineKeyboardButton("⏱️ 1 giờ", callback_data="time_quick_1h"),
+               types.InlineKeyboardButton("⏱️ 2 giờ", callback_data="time_quick_2h"),
+               types.InlineKeyboardButton("⏱️ 3 giờ", callback_data="time_quick_3h"))
+    
+    btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="time_cancel")
+    markup.row(btn_cancel)
+    
+    return markup
 
 # Background thread để kiểm tra và gửi reminder
 def reminder_checker():
@@ -509,13 +629,16 @@ def callback_handler(call):
             show_task_list(chat_id, call.message.message_id)
         
         elif action == "remind":
-            user_states[chat_id] = f"waiting_remind_time_{task_idx}"
+            user_states[chat_id] = f"selecting_remind_date_{task_idx}"
             task_content = user_tasks[chat_id][task_idx]['content']
+            
+            # Hiển thị calendar picker
+            calendar_markup = create_calendar(chat_id)
             bot.edit_message_text(
-                f"⏰ Đặt nhắc nhở cho:\n'{task_content}'\n\n"
-                f"Nhập thời gian (VD: 14:30, 2m, 30m, 2h):",
+                f"📅 Chọn ngày nhắc nhở cho:\n'{task_content}'",
                 chat_id=chat_id,
-                message_id=call.message.message_id
+                message_id=call.message.message_id,
+                reply_markup=calendar_markup
             )
             bot.answer_callback_query(call.id)
         
@@ -530,6 +653,213 @@ def callback_handler(call):
         
         elif action == "back":
             show_task_list(chat_id, call.message.message_id)
+            bot.answer_callback_query(call.id)
+    
+    # Calendar picker handlers
+    elif call.data.startswith("calendar_"):
+        parts = call.data.split("_")
+        action = parts[1]
+        
+        if action == "ignore":
+            bot.answer_callback_query(call.id)
+        
+        elif action == "prev":
+            year, month = int(parts[2]), int(parts[3])
+            month -= 1
+            if month < 1:
+                month = 12
+                year -= 1
+            calendar_markup = create_calendar(chat_id, year, month)
+            bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=calendar_markup)
+            bot.answer_callback_query(call.id)
+        
+        elif action == "next":
+            year, month = int(parts[2]), int(parts[3])
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+            calendar_markup = create_calendar(chat_id, year, month)
+            bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=calendar_markup)
+            bot.answer_callback_query(call.id)
+        
+        elif action == "today":
+            user_now = get_user_time(chat_id)
+            # Chuyển sang chọn giờ cho hôm nay
+            time_markup = create_time_picker(chat_id, user_now)
+            
+            state = user_states.get(chat_id, "")
+            if state.startswith("selecting_remind_date_"):
+                task_idx = int(state.split("_")[-1])
+                task_content = user_tasks[chat_id][task_idx]['content']
+                bot.edit_message_text(
+                    f"🕐 Chọn giờ cho hôm nay:\n'{task_content}'",
+                    chat_id=chat_id,
+                    message_id=call.message.message_id,
+                    reply_markup=time_markup
+                )
+                user_states[chat_id] = f"selecting_remind_time_{task_idx}_{user_now.strftime('%Y_%m_%d')}"
+            bot.answer_callback_query(call.id)
+        
+        elif action == "day":
+            year, month, day = int(parts[2]), int(parts[3]), int(parts[4])
+            selected_date = datetime(year, month, day)
+            
+            # Chuyển sang chọn giờ
+            time_markup = create_time_picker(chat_id, selected_date)
+            
+            state = user_states.get(chat_id, "")
+            if state.startswith("selecting_remind_date_"):
+                task_idx = int(state.split("_")[-1])
+                task_content = user_tasks[chat_id][task_idx]['content']
+                bot.edit_message_text(
+                    f"🕐 Chọn giờ - {selected_date.strftime('%d/%m/%Y')}:\n'{task_content}'",
+                    chat_id=chat_id,
+                    message_id=call.message.message_id,
+                    reply_markup=time_markup
+                )
+                user_states[chat_id] = f"selecting_remind_time_{task_idx}_{selected_date.strftime('%Y_%m_%d')}"
+            bot.answer_callback_query(call.id)
+        
+        elif action == "cancel":
+            show_task_list(chat_id, call.message.message_id)
+            user_states[chat_id] = None
+            bot.answer_callback_query(call.id)
+    
+    # Time picker handlers
+    elif call.data.startswith("time_"):
+        parts = call.data.split("_")
+        action = parts[1]
+        
+        if action == "ignore":
+            bot.answer_callback_query(call.id)
+        
+        elif action == "hour":
+            hour = int(parts[2])
+            date_str = parts[3]
+            
+            # Parse date
+            if date_str == "today":
+                selected_date = get_user_time(chat_id)
+            else:
+                y, m, d = date_str.split("_")
+                selected_date = datetime(int(y), int(m), int(d))
+            
+            # Hiển thị minute picker
+            time_markup = create_time_picker(chat_id, selected_date, hour)
+            bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=time_markup)
+            bot.answer_callback_query(call.id)
+        
+        elif action == "minute":
+            hour = int(parts[2])
+            minute = int(parts[3])
+            date_str = parts[4]
+            
+            # Parse date
+            if date_str == "today":
+                selected_date = get_user_time(chat_id)
+            else:
+                y, m, d = date_str.split("_")
+                selected_date = datetime(int(y), int(m), int(d))
+            
+            # Tạo datetime với giờ local
+            remind_local = selected_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            remind_utc = to_utc_time(chat_id, remind_local)
+            
+            # Lưu reminder
+            state = user_states.get(chat_id, "")
+            if state.startswith("selecting_remind_time_"):
+                task_idx = int(state.split("_")[3])
+                
+                user_tasks[chat_id][task_idx]['remind_time'] = remind_utc
+                user_tasks[chat_id][task_idx]['reminded'] = False
+                
+                task_content = user_tasks[chat_id][task_idx]['content']
+                remind_str = remind_local.strftime("%d/%m/%Y %H:%M")
+                
+                markup = types.InlineKeyboardMarkup()
+                btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
+                btn_menu = types.InlineKeyboardButton("🔙 Menu chính", callback_data="menu_main")
+                markup.add(btn_list, btn_menu)
+                
+                bot.edit_message_text(
+                    f"⏰ Đã đặt nhắc nhở!\n\n"
+                    f"📌 {task_content}\n"
+                    f"🕐 {remind_str} (GMT+{get_user_timezone(chat_id)})",
+                    chat_id=chat_id,
+                    message_id=call.message.message_id,
+                    reply_markup=markup
+                )
+                user_states[chat_id] = None
+                bot.answer_callback_query(call.id, "✅ Đã đặt nhắc nhở!")
+        
+        elif action == "quick":
+            # Quick time selection (5m, 15m, 30m, 1h, 2h, 3h)
+            duration = parts[2]
+            
+            if duration.endswith('m'):
+                minutes = int(duration[:-1])
+                remind_utc = datetime.utcnow() + timedelta(minutes=minutes)
+            elif duration.endswith('h'):
+                hours = int(duration[:-1])
+                remind_utc = datetime.utcnow() + timedelta(hours=hours)
+            else:
+                bot.answer_callback_query(call.id, "❌ Lỗi!")
+                return
+            
+            # Lưu reminder
+            state = user_states.get(chat_id, "")
+            if state.startswith("selecting_remind_"):
+                # Extract task_idx from state
+                if state.startswith("selecting_remind_date_"):
+                    task_idx = int(state.split("_")[-1])
+                elif state.startswith("selecting_remind_time_"):
+                    task_idx = int(state.split("_")[3])
+                else:
+                    bot.answer_callback_query(call.id, "❌ Lỗi!")
+                    return
+                
+                user_tasks[chat_id][task_idx]['remind_time'] = remind_utc
+                user_tasks[chat_id][task_idx]['reminded'] = False
+                
+                task_content = user_tasks[chat_id][task_idx]['content']
+                remind_local = get_user_time(chat_id, remind_utc)
+                remind_str = remind_local.strftime("%d/%m/%Y %H:%M")
+                
+                markup = types.InlineKeyboardMarkup()
+                btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
+                btn_menu = types.InlineKeyboardButton("🔙 Menu chính", callback_data="menu_main")
+                markup.add(btn_list, btn_menu)
+                
+                bot.edit_message_text(
+                    f"⏰ Đã đặt nhắc nhở!\n\n"
+                    f"📌 {task_content}\n"
+                    f"🕐 {remind_str} (sau {duration})",
+                    chat_id=chat_id,
+                    message_id=call.message.message_id,
+                    reply_markup=markup
+                )
+                user_states[chat_id] = None
+                bot.answer_callback_query(call.id, f"✅ Nhắc sau {duration}!")
+        
+        elif action == "back":
+            date_str = parts[2]
+            
+            # Parse date
+            if date_str == "today":
+                selected_date = get_user_time(chat_id)
+            else:
+                y, m, d = date_str.split("_")
+                selected_date = datetime(int(y), int(m), int(d))
+            
+            # Quay lại chọn giờ
+            time_markup = create_time_picker(chat_id, selected_date)
+            bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=time_markup)
+            bot.answer_callback_query(call.id)
+        
+        elif action == "cancel":
+            show_task_list(chat_id, call.message.message_id)
+            user_states[chat_id] = None
             bot.answer_callback_query(call.id)
     
     # Xóa tất cả
