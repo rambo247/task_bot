@@ -90,6 +90,11 @@ def add_task(message):
     if not task_content:
         bot.reply_to(message, "⚠️ Vui lòng nhập nội dung công việc.\n\nVí dụ: /add Họp lúc 9h sáng")
         return
+
+    if chat_id not in user_tasks:
+        user_tasks[chat_id] = []
+    
+    user_tasks[chat_id].append({
         'content': task_content, 
         'done': False,
         'remind_time': None,
@@ -98,12 +103,9 @@ def add_task(message):
     
     response = f"✅ Đã thêm công việc: '{task_content}'\n\n"
     response += f"💡 Đặt nhắc nhở với:\n/remind {len(user_tasks[chat_id])} [thời gian]"
-    bot.reply_to(message, response
-    if chat_id not in user_tasks:
-        user_tasks[chat_id] = []
-    
-    user_tasks[chat_id].append({'content': task_content, 'done': False})
-    bot.reply_to(message, f"✅ Đã thêm công việc: '{task_content}'")
+    bot.reply_to(message, response)
+
+# Lệnh /list để xem danh sách task
 "
         
         # Hiển thị thời gian nhắc nhở nếu có
