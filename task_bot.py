@@ -12,16 +12,47 @@ bot = telebot.TeleBot(TOKEN)
 # Lưu trữ danh sách task tạm thời theo Chat ID
 user_tasks = {}
 
+# Lưu trữ timezone offset của mỗi user (theo giờ, mặc định GMT+7 cho Việt Nam)
+user_timezones = {}
+
+# Các timezone phổ biến
+TIMEZONES = {
+    'VN': 7,    # Việt Nam (GMT+7)
+    'TH': 7,    # Thái Lan
+    'SG': 8,    # Singapore
+    'JP': 9,    # Nhật Bản
+    'KR': 9,    # Hàn Quốc
+    'CN': 8,    # Trung Quốc
+    'UTC': 0,   # UTC
+    'GMT': 0,   # GMT
+}
+
+def get_user_timezone(chat_id):
+    """Lấy timezone offset của user (mặc định GMT+7)"""
+    return user_timezones.get(chat_id, 7)  # Mặc định Việt Nam GMT+7
+
+def get_user_time(chat_id, utc_time=None):
+    """Chuyển UTC time sang giờ của user"""
+    if utc_time is None:
+        utc_time = datetime.utcnow()
+    offset = get_user_timezone(chat_id)
+    return utc_time + timedelta(hours=offset)
+
+def to_utc_time(chat_id, local_time):
+    """Chuyển giờ local của user sang UTC"""
+    offset = get_user_timezone(chat_id)
+    return local_time - timedelta(hours=offset)
+
 # Background thread để kiểm tra và gửi reminder
 def reminder_checker():
     """Kiểm tra và gửi thông báo nhắc nhở"""
     while True:
         try:
-            current_time = datetime.now()
+            current_time = datetime.utcnow()  # Sử dụng UTC time
             for chat_id, tasks in list(user_tasks.items()):
                 for task in tasks:
                     if task.get('remind_time') and not task.get('reminded'):
-                        remind_time = task['remind_time']
+                        remind_time = task['remind_time']  # Đã lưu ở UTC
                         # Kiểm tra nếu đã đến giờ nhắc (trong vòng 1 phút)
                         if remind_time <= current_time < remind_time + timedelta(minutes=1):
                             try:
@@ -49,14 +80,17 @@ def send_welcome(bot_message):
     print(f"Received /start from chat_id: {bot_message.chat.id}")
     welcome_text = (
         "👋 Xin chào! Tôi là bot nhắc việc của bạn.\n\n"
+        "🌍 Múi giờ hiện tại: GMT+" + str(get_user_timezone(bot_message.chat.id)) + "\n\n"
         "📋 Các lệnh hỗ trợ:\n"
         "/add [Nội dung task] - Thêm công việc mới\n"
+        "/timezone [GMT+X hoặc VN/TH/SG...] - Đặt múi giờ\n"
         "/remind [Số thứ tự] [Thời gian] - Đặt nhắc nhở\n"
         "/list - Xem danh sách công việc\n"
         "/done [Số thứ tự] - Đánh dấu hoàn thành\n"
         "/delete [Số thứ tự] - Xóa một công việc\n"
         "/clear - Xóa toàn bộ danh sách công việc\n"
-        "/help - Xem hướng dẫn"
+        "/help - Xem hướng dẫn\n\n"
+        "💡 Mẹo: Thời gian sẽ hiển thị theo múi giờ của bạn!"
     )
     bot.reply_to(bot_message, welcome_text)
 
@@ -82,6 +116,56 @@ def send_help(message):
         "   /clear"
     )
     bot.reply_to(message, help_text)
+
+# Lệnh /timezone để đặt múi giờ
+@bot.message_handler(commands=['timezone'])
+def set_timezone(message):
+    print(f"Received /timezone from chat_id: {message.chat.id}")
+    chat_id = message.chat.id
+    
+    try:
+        args = message.text.split(maxsplit=1)
+        if len(args) < 2:
+            # Hiển thị timezone hiện tại và hướng dẫn
+            current_tz = get_user_timezone(chat_id)
+            tz_list = "\n".join([f"   {code} = GMT+{offset}" for code, offset in sorted(TIMEZONES.items(), key=lambda x: x[1])])
+            bot.reply_to(message,
+                f"🌍 Múi giờ hiện tại: GMT+{current_tz}\n\n"
+                f"📝 Cách đặt múi giờ:\n"
+                f"/timezone VN (Việt Nam)\n"
+                f"/timezone GMT+7\n"
+                f"/timezone +8\n\n"
+                f"🌐 Các múi giờ phổ biến:\n{tz_list}")
+            return
+        
+        tz_input = args[1].strip().upper()
+        
+        # Kiểm tra nếu là mã quốc gia
+        if tz_input in TIMEZONES:
+            user_timezones[chat_id] = TIMEZONES[tz_input]
+            bot.reply_to(message, f"✅ Đã đặt múi giờ: GMT+{TIMEZONES[tz_input]} ({tz_input})")
+            return
+        
+        # Kiểm tra định dạng GMT+X hoặc +X
+        if tz_input.startswith('GMT'):
+            tz_input = tz_input[3:]
+        
+        if tz_input.startswith('+') or tz_input.startswith('-'):
+            offset = int(tz_input)
+            if -12 <= offset <= 14:
+                user_timezones[chat_id] = offset
+                bot.reply_to(message, f"✅ Đã đặt múi giờ: GMT{tz_input:+d}")
+            else:
+                bot.reply_to(message, "⚠️ Múi giờ không hợp lệ! Vui lòng chọn từ GMT-12 đến GMT+14")
+        else:
+            bot.reply_to(message, 
+                "⚠️ Định dạng không hợp lệ!\n\n"
+                "Sử dụng: /timezone VN hoặc /timezone +7")
+    
+    except (ValueError, IndexError):
+        bot.reply_to(message, 
+            "⚠️ Lỗi định dạng!\n\n"
+            "Ví dụ: /timezone VN hoặc /timezone +7")
 
 # Lệnh /add để thêm task
 @bot.message_handler(commands=['add'])
@@ -125,7 +209,9 @@ def list_tasks(message):
         
         # Hiển thị thời gian nhắc nhở nếu có
         if task.get('remind_time'):
-            remind_str = task['remind_time'].strftime("%d/%m/%Y %H:%M")
+            # Chuyển UTC sang giờ của user
+            user_time = get_user_time(chat_id, task['remind_time'])
+            remind_str = user_time.strftime("%d/%m/%Y %H:%M")
             if task.get('reminded'):
                 tasks_text += f"\n   🔔 Đã nhắc: {remind_str}"
             else:
@@ -184,8 +270,8 @@ def set_reminder(message):
             bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[chat_id])}")
             return
         
-        # Parse thời gian
-        remind_time = parse_time(time_str)
+        # Parse thời gian (với timezone của user)
+        remind_time = parse_time(time_str, chat_id)
         
         if remind_time is None:
             bot.reply_to(message, 
@@ -197,21 +283,23 @@ def set_reminder(message):
                 "• 2h (sau 2 giờ)")
             return
         
-        if remind_time <= datetime.now():
+        if remind_time <= datetime.utcnow():
             bot.reply_to(message, "⚠️ Thời gian nhắc nhở phải là thời điểm trong tương lai!")
             return
         
-        # Cập nhật reminder
+        # Cập nhật reminder (lưu ở UTC)
         user_tasks[chat_id][task_number - 1]['remind_time'] = remind_time
         user_tasks[chat_id][task_number - 1]['reminded'] = False
         
         task_content = user_tasks[chat_id][task_number - 1]['content']
-        remind_str = remind_time.strftime("%d/%m/%Y %H:%M")
+        # Hiển thị theo giờ local của user
+        user_time = get_user_time(chat_id, remind_time)
+        remind_str = user_time.strftime("%d/%m/%Y %H:%M")
         
         bot.reply_to(message, 
             f"⏰ Đã đặt nhắc nhở!\n\n"
             f"📌 Công việc: {task_content}\n"
-            f"🕐 Thời gian: {remind_str}")
+            f"🕐 Thời gian: {remind_str} (GMT+{get_user_timezone(chat_id)})")
         
     except (IndexError, ValueError) as e:
         bot.reply_to(message, 
@@ -219,41 +307,46 @@ def set_reminder(message):
             "Sử dụng: /remind [số] [thời gian]\n"
             "Ví dụ: /remind 1 14:30")
 
-def parse_time(time_str):
-    """Parse nhiều định dạng thời gian"""
+def parse_time(time_str, chat_id=None):
+    """Parse nhiều định dạng thời gian (trả về UTC time)"""
     try:
         # Định dạng: 30m, 2h, 1d (relative time)
         if time_str.endswith('m'):
             minutes = int(time_str[:-1])
-            return datetime.now() + timedelta(minutes=minutes)
+            return datetime.utcnow() + timedelta(minutes=minutes)  # UTC
         elif time_str.endswith('h'):
             hours = int(time_str[:-1])
-            return datetime.now() + timedelta(hours=hours)
+            return datetime.utcnow() + timedelta(hours=hours)  # UTC
         elif time_str.endswith('d'):
             days = int(time_str[:-1])
-            return datetime.now() + timedelta(days=days)
+            return datetime.utcnow() + timedelta(days=days)  # UTC
         
-        # Định dạng: HH:MM (hôm nay)
+        # Định dạng: HH:MM (hôm nay, theo giờ local của user)
         if ':' in time_str and len(time_str.split()) == 1:
             time_parts = time_str.split(':')
             if len(time_parts) == 2:
                 hour = int(time_parts[0])
                 minute = int(time_parts[1])
-                remind_time = datetime.now().replace(hour=hour, minute=minute, second=0, microsecond=0)
+                # Lấy giờ local của user
+                user_now = get_user_time(chat_id) if chat_id else datetime.utcnow()
+                remind_time = user_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 
                 # Nếu thời gian đã qua trong ngày hôm nay, chuyển sang ngày mai
-                if remind_time <= datetime.now():
+                if remind_time <= user_now:
                     remind_time += timedelta(days=1)
                 
-                return remind_time
+                # Chuyển sang UTC
+                return to_utc_time(chat_id, remind_time) if chat_id else remind_time
         
-        # Định dạng: YYYY-MM-DD HH:MM
+        # Định dạng: YYYY-MM-DD HH:MM (theo giờ local của user)
         if len(time_str.split()) == 2:
-            return datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+            local_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+            return to_utc_time(chat_id, local_time) if chat_id else local_time
         
-        # Định dạng: DD/MM/YYYY HH:MM
+        # Định dạng: DD/MM/YYYY HH:MM (theo giờ local của user)
         if '/' in time_str:
-            return datetime.strptime(time_str, "%d/%m/%Y %H:%M")
+            local_time = datetime.strptime(time_str, "%d/%m/%Y %H:%M")
+            return to_utc_time(chat_id, local_time) if chat_id else local_time
         
         return None
     except:
