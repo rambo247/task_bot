@@ -25,11 +25,13 @@ def reminder_checker():
                         # Kiểm tra nếu đã đến giờ nhắc (trong vòng 1 phút)
                         if remind_time <= current_time < remind_time + timedelta(minutes=1):
                             try:
+                                print(f"Sending reminder to chat_id {chat_id}: {task['content']}")
                                 reminder_text = f"⏰ NHẮC NHỞ!\n\n📌 {task['content']}"
                                 if task.get('done'):
                                     reminder_text += "\n\n✅ (Đã hoàn thành)"
                                 bot.send_message(chat_id, reminder_text)
                                 task['reminded'] = True
+                                print(f"Reminder sent successfully to chat_id {chat_id}")
                             except Exception as e:
                                 print(f"Error sending reminder: {e}")
             time.sleep(30)  # Kiểm tra mỗi 30 giây
@@ -44,6 +46,7 @@ reminder_thread.start()
 # Lệnh /start
 @bot.message_handler(commands=['start'])
 def send_welcome(bot_message):
+    print(f"Received /start from chat_id: {bot_message.chat.id}")
     welcome_text = (
         "👋 Xin chào! Tôi là bot nhắc việc của bạn.\n\n"
         "📋 Các lệnh hỗ trợ:\n"
@@ -83,6 +86,7 @@ def send_help(message):
 # Lệnh /add để thêm task
 @bot.message_handler(commands=['add'])
 def add_task(message):
+    print(f"Received /add from chat_id: {message.chat.id}")
     chat_id = message.chat.id
     # Lấy nội dung sau lệnh /add
     task_content = message.text[len('/add '):].strip()
@@ -153,6 +157,7 @@ def mark_done(message):
 # Lệnh /remind để đặt nhắc nhở
 @bot.message_handler(commands=['remind'])
 def set_reminder(message):
+    print(f"Received /remind from chat_id: {message.chat.id}")
     chat_id = message.chat.id
     
     if chat_id not in user_tasks or not user_tasks[chat_id]:
@@ -311,6 +316,12 @@ def callback_handler(call):
 
 # Chạy bot
 if __name__ == "__main__":
-    print("🤖 Bot đang chạy...")
-    print(f"📱 Bot name: @{bot.get_me().username}")
-    bot.infinity_polling()
+    print("🤖 Bot đang khởi động...")
+    try:
+        bot_info = bot.get_me()
+        print(f"📱 Bot name: @{bot_info.username}")
+        print(f"🆔 Bot ID: {bot_info.id}")
+        print("✅ Bot đã sẵn sàng và đang lắng nghe tin nhắn...")
+        bot.infinity_polling()
+    except Exception as e:
+        print(f"❌ Lỗi khởi động bot: {e}")
