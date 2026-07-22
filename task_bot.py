@@ -7,6 +7,10 @@ import requests
 import json
 from datetime import datetime, timedelta
 from telebot import types
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Lấy token từ biến môi trường hoặc sử dụng token mặc định
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8802370170:AAEGZU_Df5OnDQTO7kn9lyf2UzeIbbh2KPk')
