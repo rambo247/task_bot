@@ -1090,16 +1090,22 @@ def handle_user_input(message):
                 bot.reply_to(message, "⚠️ Sai định dạng! Nhập lại theo format HH:MM (ví dụ: 14:27)")
                 return
             
-        # Validate giờ và phút là số
-        hour_str = time_parts[0].strip()
-        minute_str = time_parts[1].strip()
-        
-        if not hour_str.isdigit() or not minute_str.isdigit():
-            bot.reply_to(message, f"⚠️ Giờ và phút phải là số!\n\nBạn đã nhập: '{time_str}'\nVí dụ đúng: 14:27, 9:05")
-            return
-        
-        hour = int(hour_str)
-        minute = int(minute_str)
+            # Validate giờ và phút là số
+            hour_str = time_parts[0].strip()
+            minute_str = time_parts[1].strip()
+            
+            if not hour_str.isdigit() or not minute_str.isdigit():
+                bot.reply_to(message, f"⚠️ Giờ và phút phải là số!\n\nBạn đã nhập: '{time_str}'\nVí dụ đúng: 14:27, 9:05")
+                return
+            
+            hour = int(hour_str)
+            minute = int(minute_str)
+            
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                bot.reply_to(message, f"⚠️ Giờ phải từ 0-23 (bạn nhập {hour}), phút từ 0-59 (bạn nhập {minute})! Nhập lại:")
+                return
+            
+            # Parse date
             if date_str == "today":
                 selected_date = get_user_time(chat_id)
             else:
