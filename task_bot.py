@@ -106,18 +106,6 @@ def add_task(message):
     bot.reply_to(message, response)
 
 # Lệnh /list để xem danh sách task
-"
-        
-        # Hiển thị thời gian nhắc nhở nếu có
-        if task.get('remind_time'):
-            remind_str = task['remind_time'].strftime("%d/%m/%Y %H:%M")
-            if task.get('reminded'):
-                tasks_text += f"\n   🔔 Đã nhắc: {remind_str}"
-            else:
-                tasks_text += f"\n   ⏰ Nhắc lúc: {remind_str}"
-        
-        tasks_text += "
-# Lệnh /list để xem danh sách task
 @bot.message_handler(commands=['list'])
 def list_tasks(message):
     chat_id = message.chat.id
@@ -129,7 +117,17 @@ def list_tasks(message):
     tasks_text = "📋 Danh sách công việc:\n\n"
     for index, task in enumerate(user_tasks[chat_id], 1):
         status = "✅" if task['done'] else "⏳"
-        tasks_text += f"{index}. {status} {task['content']}\n"
+        tasks_text += f"{index}. {status} {task['content']}"
+        
+        # Hiển thị thời gian nhắc nhở nếu có
+        if task.get('remind_time'):
+            remind_str = task['remind_time'].strftime("%d/%m/%Y %H:%M")
+            if task.get('reminded'):
+                tasks_text += f"\n   🔔 Đã nhắc: {remind_str}"
+            else:
+                tasks_text += f"\n   ⏰ Nhắc lúc: {remind_str}"
+        
+        tasks_text += "\n"
         
     bot.reply_to(message, tasks_text)
 
