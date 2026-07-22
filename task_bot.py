@@ -3,11 +3,14 @@ import os
 import threading
 import time
 import calendar
+import requests
+import json
 from datetime import datetime, timedelta
 from telebot import types
 
 # Lấy token từ biến môi trường hoặc sử dụng token mặc định
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8802370170:AAEGZU_Df5OnDQTO7kn9lyf2UzeIbbh2KPk')
+GITHUB_TOKEN = os.getenv('GITHUB_TOKEN', '')  # GitHub token cho AI
 bot = telebot.TeleBot(TOKEN)
 
 # Lưu trữ danh sách task tạm thời theo Chat ID
@@ -500,6 +503,85 @@ def parse_time(time_str, chat_id=None):
         
         return None
     except:
+        return None
+
+# ============= AI FEATURES với GitHub Models =============
+
+def call_github_ai(user_message, system_prompt="You are a helpful assistant."):
+    """Gọi GitHub Models AI API"""
+    if not GITHUB_TOKEN:
+        return None
+    
+    try:
+        headers = {
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            "model": "gpt-4o-mini",
+            "temperature": 0.3,
+            "max_tokens": 500
+        }
+        
+        response = requests.post(
+            "https://models.inference.ai.azure.com/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result['choices'][0]['message']['content']
+        else:
+            print(f"GitHub AI API error: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error calling GitHub AI: {e}")
+        return None
+
+def parse_natural_language_task(user_text, chat_id):
+    """Sử dụng AI để parse task và thời gian từ ngôn ngữ tự nhiên"""
+    user_now = get_user_time(chat_id)
+    current_time_str = user_now.strftime("%Y-%m-%d %H:%M")
+    
+    system_prompt = f"""Bạn là trợ lý thông minh phân tích công việc và thời gian.
+Thời gian hiện tại: {current_time_str}
+Múi giờ: GMT+{get_user_timezone(chat_id)}
+
+Nhiệm vụ: Phân tích câu của user và trả về JSON với format:
+{{
+  "task": "nội dung công việc",
+  "time": "thời gian nhắc nhở",
+  "has_reminder": true/false
+}}
+
+Quy tắc phân tích thời gian:
+- "sáng mai", "mai sáng" → ngày mai 9:00
+- "chiều mai", "mai chiều" → ngày mai 14:00
+- "tối nay", "tối" → hôm nay 20:00
+- "9h sáng", "9h" → 09:00 gần nhất (hôm nay hoặc mai)
+- "2h chiều", "14h" → 14:00 gần nhất
+- Nếu không có thời gian cụ thể: has_reminder = false
+
+Chỉ trả về JSON, không thêm text khác."""
+    
+    ai_response = call_github_ai(user_text, system_prompt)
+    
+    if not ai_response:
+        return None
+    
+    try:
+        # Parse JSON từ AI response
+        result = json.loads(ai_response)
+        return result
+    except:
+        # Nếu AI không trả về JSON chuẩn, fallback
         return None
 
 # Lệnh /delete để xóa một task
@@ -1248,6 +1330,86 @@ def handle_user_input(message):
             f"🕐 {remind_str} (GMT+{get_user_timezone(chat_id)})",
             reply_markup=markup
         )
+
+# ============= NATURAL LANGUAGE HANDLER với AI =============
+
+# Xử lý tin nhắn ngôn ngữ tự nhiên (không phải lệnh, không trong state)
+@bot.message_handler(func=lambda message: message.chat.id not in user_states or not user_states[message.chat.id])
+def handle_natural_language(message):
+    """Xử lý ngôn ngữ tự nhiên với AI"""
+    chat_id = message.chat.id
+    user_text = message.text.strip()
+    
+    # Bỏ qua nếu là lệnh
+    if user_text.startswith('/'):
+        return
+    
+    print(f"Natural language input from {chat_id}: {user_text}")
+    
+    # Nếu không có GitHub token, sử dụng mode thông thường
+    if not GITHUB_TOKEN:
+        bot.reply_to(message, 
+            "💡 Gửi tin nhắn tự do! Nhưng cần GitHub token để kích hoạt AI.\n\n"
+            "Dùng /add để thêm task hoặc chọn menu bên dưới.",
+            reply_markup=show_main_menu(chat_id)[1]
+        )
+        return
+    
+    # Gửi typing indicator
+    bot.send_chat_action(chat_id, 'typing')
+    
+    # Parse với AI
+    ai_result = parse_natural_language_task(user_text, chat_id)
+    
+    if not ai_result:
+        # AI không trả về kết quả, fallback
+        bot.reply_to(message,
+            "🤔 Tôi chưa hiểu rõ ý bạn.\n\n"
+            "Thử lại hoặc dùng /add để thêm task.",
+            reply_markup=show_main_menu(chat_id)[1]
+        )
+        return
+    
+    # Tạo task từ AI result
+    task_content = ai_result.get('task', user_text)
+    has_reminder = ai_result.get('has_reminder', False)
+    time_str = ai_result.get('time', '')
+    
+    # Thêm task
+    if chat_id not in user_tasks:
+        user_tasks[chat_id] = []
+    
+    task_idx = len(user_tasks[chat_id])
+    user_tasks[chat_id].append({
+        'content': task_content,
+        'done': False,
+        'remind_time': None,
+        'reminded': False
+    })
+    
+    response_text = f"✅ Đã thêm: '{task_content}'"
+    
+    # Xử lý reminder nếu có
+    if has_reminder and time_str:
+        remind_time = parse_time(time_str, chat_id)
+        if remind_time and remind_time > datetime.utcnow():
+            user_tasks[chat_id][task_idx]['remind_time'] = remind_time
+            user_tasks[chat_id][task_idx]['reminded'] = False
+            
+            user_time = get_user_time(chat_id, remind_time)
+            remind_str = user_time.strftime("%d/%m/%Y %H:%M")
+            response_text += f"\n⏰ Nhắc nhở: {remind_str}"
+    
+    # Hiển thị với buttons
+    markup = types.InlineKeyboardMarkup()
+    if not has_reminder or not time_str:
+        btn_remind = types.InlineKeyboardButton("⏰ Đặt nhắc nhở", callback_data=f"task_remind_{task_idx}")
+        markup.add(btn_remind)
+    btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
+    btn_add = types.InlineKeyboardButton("➕ Thêm tiếp", callback_data="menu_add")
+    markup.add(btn_list, btn_add)
+    
+    bot.reply_to(message, response_text + "\n\n🤖 Phân tích bởi AI", reply_markup=markup)
 
 # Chạy bot
 if __name__ == "__main__":
