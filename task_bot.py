@@ -1090,15 +1090,16 @@ def handle_user_input(message):
                 bot.reply_to(message, "⚠️ Sai định dạng! Nhập lại theo format HH:MM (ví dụ: 14:27)")
                 return
             
-            hour = int(time_parts[0].strip())
-            minute = int(time_parts[1].strip())
-            print(f"Parsed: hour={hour}, minute={minute}")
-            
-            if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                bot.reply_to(message, f"⚠️ Giờ phải từ 0-23 (bạn nhập {hour}), phút từ 0-59 (bạn nhập {minute})! Nhập lại:")
-                return
-            
-            # Parse date
+        # Validate giờ và phút là số
+        hour_str = time_parts[0].strip()
+        minute_str = time_parts[1].strip()
+        
+        if not hour_str.isdigit() or not minute_str.isdigit():
+            bot.reply_to(message, f"⚠️ Giờ và phút phải là số!\n\nBạn đã nhập: '{time_str}'\nVí dụ đúng: 14:27, 9:05")
+            return
+        
+        hour = int(hour_str)
+        minute = int(minute_str)
             if date_str == "today":
                 selected_date = get_user_time(chat_id)
             else:
@@ -1135,8 +1136,8 @@ def handle_user_input(message):
             )
         
         except (ValueError, IndexError) as e:
-            print(f"Error parsing time: {e}")
-            bot.reply_to(message, f"⚠️ Sai định dạng! Nhập lại theo format HH:MM (ví dụ: 14:27)\n\nBạn đã nhập: '{time_str}'")
+            print(f"Error parsing date or time: {e}")
+            bot.reply_to(message, f"⚠️ Đã xảy ra lỗi khi xử lý!\n\nVui lòng thử lại hoặc dùng /cancel để hủy.")
     
     # Nhập phút thủ công
     elif state.startswith("manual_minute_input_"):
@@ -1152,6 +1153,11 @@ def handle_user_input(message):
         print(f"Manual minute input: task_idx={task_idx}, hour={hour}, date_str={date_str}, minute_str='{minute_str}'")
         
         try:
+            # Validate là số
+            if not minute_str.isdigit():
+                bot.reply_to(message, f"⚠️ Phút phải là số từ 0-59!\n\nBạn đã nhập: '{minute_str}'")
+                return
+            
             minute = int(minute_str)
             print(f"Parsed minute: {minute}")
             
@@ -1195,8 +1201,9 @@ def handle_user_input(message):
                 reply_markup=markup
             )
         
-        except ValueError:
-            bot.reply_to(message, "⚠️ Vui lòng nhập số từ 0-59!")
+        except (ValueError, IndexError) as e:
+            print(f"Error in manual minute input: {e}")
+            bot.reply_to(message, "⚠️ Đã xảy ra lỗi!\n\nVui lòng thử lại hoặc dùng /cancel để hủy.")
     
     # Đặt reminder
     elif state.startswith("waiting_remind_time_"):
