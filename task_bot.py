@@ -1065,25 +1065,37 @@ def handle_user_input(message):
     
     # Nhập giờ thủ công (HH:MM)
     elif state.startswith("manual_time_input_"):
-        parts = state.split("_")
-        task_idx = int(parts[3])
-        date_str = parts[4]
+        # State format: manual_time_input_{task_idx}_{date_str}
+        # date_str có thể là "today" hoặc "YYYY_MM_DD"
+        state_parts = state.split("_")
+        task_idx = int(state_parts[3])
+        
+        # date_str có thể có dấu _ nên phải lấy từ index 4 trở đi
+        date_str = "_".join(state_parts[4:])
         
         time_str = message.text.strip()
+        print(f"Manual time input: task_idx={task_idx}, date_str={date_str}, time_str='{time_str}'")
         
         # Parse HH:MM hoặc H:MM
         try:
             # Kiểm tra format
-            if ':' in time_str:
-                time_parts = time_str.split(':')
-                hour = int(time_parts[0])
-                minute = int(time_parts[1])
-            else:
+            if ':' not in time_str:
                 bot.reply_to(message, "⚠️ Sai định dạng! Nhập lại theo format HH:MM (ví dụ: 14:27)")
                 return
             
+            time_parts = time_str.split(':')
+            
+            # Phải có đúng 2 phần (giờ và phút)
+            if len(time_parts) != 2:
+                bot.reply_to(message, "⚠️ Sai định dạng! Nhập lại theo format HH:MM (ví dụ: 14:27)")
+                return
+            
+            hour = int(time_parts[0].strip())
+            minute = int(time_parts[1].strip())
+            print(f"Parsed: hour={hour}, minute={minute}")
+            
             if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                bot.reply_to(message, "⚠️ Giờ phải từ 0-23, phút từ 0-59! Nhập lại:")
+                bot.reply_to(message, f"⚠️ Giờ phải từ 0-23 (bạn nhập {hour}), phút từ 0-59 (bạn nhập {minute})! Nhập lại:")
                 return
             
             # Parse date
@@ -1122,23 +1134,29 @@ def handle_user_input(message):
                 reply_markup=markup
             )
         
-        except (ValueError, IndexError):
-            bot.reply_to(message, "⚠️ Sai định dạng! Nhập lại theo format HH:MM (ví dụ: 14:27)")
+        except (ValueError, IndexError) as e:
+            print(f"Error parsing time: {e}")
+            bot.reply_to(message, f"⚠️ Sai định dạng! Nhập lại theo format HH:MM (ví dụ: 14:27)\n\nBạn đã nhập: '{time_str}'")
     
     # Nhập phút thủ công
     elif state.startswith("manual_minute_input_"):
-        parts = state.split("_")
-        task_idx = int(parts[3])
-        hour = int(parts[4])
-        date_str = parts[5]
+        # State format: manual_minute_input_{task_idx}_{hour}_{date_str}
+        state_parts = state.split("_")
+        task_idx = int(state_parts[3])
+        hour = int(state_parts[4])
+        
+        # date_str có thể có dấu _ nên phải lấy từ index 5 trở đi
+        date_str = "_".join(state_parts[5:])
         
         minute_str = message.text.strip()
+        print(f"Manual minute input: task_idx={task_idx}, hour={hour}, date_str={date_str}, minute_str='{minute_str}'")
         
         try:
             minute = int(minute_str)
+            print(f"Parsed minute: {minute}")
             
             if not (0 <= minute <= 59):
-                bot.reply_to(message, "⚠️ Phút phải từ 0-59! Nhập lại:")
+                bot.reply_to(message, f"⚠️ Phút phải từ 0-59 (bạn nhập {minute})! Nhập lại:")
                 return
             
             # Parse date
