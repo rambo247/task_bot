@@ -7,6 +7,7 @@ Bot Telegram quản lý công việc đơn giản và tiện lợi, giúp bạn 
 - ➕ Thêm công việc mới
 - 📅 **Chọn ngày từ lịch trực quan** (MỚI!)
 - 🕐 **Chọn giờ dễ dàng với time picker** (MỚI!)
+- ✍️ **Nhập giờ chính xác (HH:MM)** - Không giới hạn phút! (MỚI!)
 - ⏰ **Đặt nhắc nhở tự động**
 - 🌍 **Hỗ trợ múi giờ (GMT+7 mặc định cho Việt Nam)**
 - 📱 **Menu tương tác với buttons** (Không cần gõ lệnh!)
@@ -17,6 +18,7 @@ Bot Telegram quản lý công việc đơn giản và tiện lợi, giúp bạn 
 - 💾 Lưu trữ riêng biệt cho từng người dùng
 - 🔔 Tự động gửi thông báo khi đến giờ nhắc
 - ⚡ Quick time select: 5m, 15m, 30m, 1h, 2h, 3h
+- 🚫 Lệnh /cancel để hủy thao tác đang làm
 
 ## 📋 Yêu cầu
 
@@ -79,8 +81,16 @@ Bot: Hiển thị menu với các nút:
 **Click nút "⏰ Đặt nhắc nhở" khi xem task:**
 1. 📅 **Chọn ngày từ lịch** - Click vào ngày trong tháng
 2. 🕐 **Chọn giờ** - Click vào giờ (00-23)
-3. ⏱️ **Chọn phút** - Click vào phút (00, 15, 30, 45)
+3. ⏱️ **Chọn phút** - Click vào phút (00, 15, 30, 45, và nhiều phút khác)
+   - Hoặc click "✍️ Nhập chính xác" để gõ phút bất kỳ (0-59)
 4. ✅ **Hoàn tất!**
+
+**💡 Nhập thời gian chính xác:**
+- Khi đang chọn giờ: Click "✍️ Nhập giờ (VD: 14:30)"
+  - Nhập format: **HH:MM** (ví dụ: 14:27, 9:05, 23:45)
+- Khi đang chọn phút: Click "✍️ Nhập chính xác (VD: 27)"
+  - Nhập số phút: **0-59** (ví dụ: 27, 8, 42)
+- Gửi **/cancel** để hủy nếu không muốn nhập nữa
 
 **⚡ Quick Select (Chọn nhanh):**
 - Click "⏱️ 5 phút" - Nhắc sau 5 phút
