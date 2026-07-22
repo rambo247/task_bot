@@ -1,0 +1,51 @@
+name: Feature Request
+description: Đề xuất tính năng mới cho bot
+title: "[FEATURE] "
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cảm ơn bạn đã đề xuất tính năng mới!
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Mô tả tính năng
+      description: Mô tả chi tiết tính năng bạn muốn
+      placeholder: Thêm khả năng đặt thời gian nhắc nhở cho mỗi task
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Tại sao cần tính năng này?
+      description: Giải thích lý do tính năng này hữu ích
+      placeholder: Giúp người dùng không quên các công việc quan trọng
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Giải pháp đề xuất
+      description: Bạn muốn tính năng hoạt động như thế nào?
+      placeholder: |
+        - Thêm lệnh /remind [số thứ tự] [thời gian]
+        - Bot sẽ gửi tin nhắn nhắc nhở vào thời điểm đã đặt
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Các phương án thay thế
+      description: Bạn đã cân nhắc các giải pháp khác không?
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Thông tin bổ sung
+      description: Thêm bất kỳ thông tin nào khác về đề xuất

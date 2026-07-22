@@ -1,0 +1,84 @@
+name: Bug Report
+description: Báo cáo lỗi để giúp cải thiện bot
+title: "[BUG] "
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cảm ơn bạn đã dành thời gian báo cáo lỗi!
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Mô tả lỗi
+      description: Mô tả chi tiết lỗi bạn gặp phải
+      placeholder: Bot không phản hồi khi tôi gửi lệnh /add
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Các bước tái hiện lỗi
+      description: Làm thế nào để tái hiện lỗi này?
+      placeholder: |
+        1. Gửi lệnh '/add'
+        2. Không có phản hồi
+        3. Lỗi xuất hiện...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Kết quả mong đợi
+      description: Bạn mong đợi điều gì xảy ra?
+      placeholder: Bot nên trả lời "Vui lòng nhập nội dung công việc"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Kết quả thực tế
+      description: Điều gì thực sự xảy ra?
+      placeholder: Bot không phản hồi gì cả
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Nếu có logs/error messages, paste vào đây
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Nếu có, thêm screenshots để minh họa
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Nền tảng
+      description: Bạn đang chạy bot ở đâu?
+      options:
+        - Local machine
+        - Render.com
+        - Heroku
+        - PythonAnywhere
+        - Railway
+        - VPS
+        - Khác
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Thông tin bổ sung
+      description: Thêm bất kỳ thông tin nào khác về vấn đề
