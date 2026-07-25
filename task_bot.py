@@ -828,7 +828,13 @@ def callback_handler(call):
     # Menu chính
     if call.data == "menu_main":
         text, markup = show_main_menu(user_id)
-        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        try:
+            # Thử edit message hiện tại
+            bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        except Exception as e:
+            # Nếu không edit được (ví dụ: message là document), gửi message mới
+            print(f"Cannot edit message, sending new one: {e}")
+            bot.send_message(chat_id, text, reply_markup=markup, parse_mode='Markdown')
         bot.answer_callback_query(call.id)
     
     # Thêm công việc
