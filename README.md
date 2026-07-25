@@ -4,34 +4,45 @@ Bot Telegram quản lý công việc đơn giản và tiện lợi, giúp bạn 
 
 ## ✨ Tính năng
 
-### 🎯 Quản lý Tasks
+### 🎯 Multi-Function Assistant
+
+Bot được thiết kế như một **trợ lý đa chức năng** với menu phân loại rõ ràng:
+
+#### 📋 Task Manager
 - ➕ Thêm công việc mới
-- 📅 **Chọn ngày từ lịch trực quan** (MỚI!)
-- 🕐 **Chọn giờ dễ dàng với time picker** (MỚI!)
-- ✍️ **Nhập giờ chính xác (HH:MM)** - Không giới hạn phút! (MỚI!)
+- 📅 **Chọn ngày từ lịch trực quan**
+- 🕐 **Chọn giờ dễ dàng với time picker**
+- ✍️ **Nhập giờ chính xác (HH:MM)** - Không giới hạn phút!
 - ⏰ **Đặt nhắc nhở tự động**
-- 📝 Xem danh sách công việc
+- 📝 Xem danh sách công việc (tất cả / đang làm / hoàn thành)
 - ✅ Đánh dấu công việc hoàn thành
 - 🗑️ Xóa công việc cụ thể
 - 🧹 Xóa toàn bộ danh sách (có xác nhận)
-- 🚫 Lệnh /cancel để hủy thao tác đang làm
 
-### 🎤 Voice to Text (MỚI! ⭐)
+#### 🎤 Voice Tools
 - **Ghi âm giọng nói** → Chuyển thành văn bản tự động
 - **Hỗ trợ tiếng Việt** và nhiều ngôn ngữ khác
 - **Xuất file .txt** với nội dung đã chuyển đổi
 - **Sử dụng OpenAI Whisper API** (độ chính xác cao)
 - Chi phí thấp: ~150 VND/phút audio
+- Privacy-first: Transcription gửi về private chat
 - Xem hướng dẫn: [VOICE_QUICK_SETUP.md](VOICE_QUICK_SETUP.md)
 
-### 🤖 AI Features
+#### 🤖 AI Assistant
+- 💬 **Natural language task creation** (cần GitHub token)
+- AI tự động phân tích thời gian và tạo reminder
+- 🎤 **Speech to text transcription** (cần OpenAI key)
+- 📊 Smart task analysis (coming soon)
+- 🔮 AI suggestions (coming soon)
+
+#### ⚙️ Settings & Features
 - 🌍 **Hỗ trợ múi giờ (GMT+7 mặc định cho Việt Nam)**
 - 📱 **Menu tương tác với buttons** (Không cần gõ lệnh!)
 - 💾 Lưu trữ riêng biệt cho từng người dùng
 - 🔔 Tự động gửi thông báo khi đến giờ nhắc
 - ⚡ Quick time select: 5m, 15m, 30m, 1h, 2h, 3h
-- 💬 **Natural language task creation** (cần GitHub token)
-- 🎤 **Speech to text transcription** (cần OpenAI key)
+- 🚫 Lệnh /cancel để hủy thao tác đang làm
+- 📊 Thống kê và báo cáo
 
 ## 📋 Yêu cầu
 

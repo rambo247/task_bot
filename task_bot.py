@@ -251,19 +251,143 @@ def reminder_checker():
 reminder_thread = threading.Thread(target=reminder_checker, daemon=True)
 reminder_thread.start()
 
-def show_main_menu(user_id, message_text="👋 Xin chào! Tôi là bot nhắc việc của bạn."):
-    """Hiển thị menu chính với các nút"""
+def show_main_menu(user_id, message_text="👋 Xin chào! Tôi là trợ lý đa chức năng của bạn."):
+    """Hiển thị menu chính với các category"""
     tz = get_user_timezone(user_id)
-    text = f"{message_text}\n\n🌍 Múi giờ: GMT+{tz}\n\n📱 Chọn chức năng:"
+    task_count = len(user_tasks.get(user_id, []))
+    
+    text = f"{message_text}\n\n"
+    text += f"📊 **Thống kê:**\n"
+    text += f"   • 📋 Tasks: {task_count}\n"
+    text += f"   • 🌍 Múi giờ: GMT+{tz}\n\n"
+    text += f"🎯 **Chọn chức năng:**"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
-    btn_add = types.InlineKeyboardButton("➕ Thêm công việc", callback_data="menu_add")
-    btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
-    btn_timezone = types.InlineKeyboardButton("🌍 Đặt múi giờ", callback_data="menu_timezone")
-    btn_help = types.InlineKeyboardButton("❓ Hướng dẫn", callback_data="menu_help")
     
+    # Row 1: Task Management & Voice Tools
+    btn_tasks = types.InlineKeyboardButton("📋 Task Manager", callback_data="category_tasks")
+    btn_voice = types.InlineKeyboardButton("🎤 Voice Tools", callback_data="category_voice")
+    markup.add(btn_tasks, btn_voice)
+    
+    # Row 2: AI Assistant & Quick Actions
+    btn_ai = types.InlineKeyboardButton("🤖 AI Assistant", callback_data="category_ai")
+    btn_quick = types.InlineKeyboardButton("⚡ Quick Add", callback_data="menu_add")
+    markup.add(btn_ai, btn_quick)
+    
+    # Row 3: Settings & Help
+    btn_settings = types.InlineKeyboardButton("⚙️ Settings", callback_data="category_settings")
+    btn_help = types.InlineKeyboardButton("❓ Help", callback_data="menu_help")
+    markup.add(btn_settings, btn_help)
+    
+    return text, markup
+
+def show_tasks_menu(user_id):
+    """Hiển thị menu Task Management"""
+    task_count = len(user_tasks.get(user_id, []))
+    pending = sum(1 for t in user_tasks.get(user_id, []) if not t.get('done', False))
+    completed = task_count - pending
+    
+    text = f"📋 **TASK MANAGEMENT**\n\n"
+    text += f"📊 Thống kê:\n"
+    text += f"   • Tổng: {task_count} tasks\n"
+    text += f"   • Đang làm: {pending} tasks\n"
+    text += f"   • Hoàn thành: {completed} tasks\n\n"
+    text += f"🎯 Chọn thao tác:"
+    
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btn_add = types.InlineKeyboardButton("➕ Thêm task", callback_data="menu_add")
+    btn_list = types.InlineKeyboardButton("📋 Xem tất cả", callback_data="menu_list")
     markup.add(btn_add, btn_list)
-    markup.add(btn_timezone, btn_help)
+    
+    if task_count > 0:
+        btn_pending = types.InlineKeyboardButton("⏳ Tasks đang làm", callback_data="tasks_pending")
+        btn_completed = types.InlineKeyboardButton("✅ Tasks hoàn thành", callback_data="tasks_completed")
+        markup.add(btn_pending, btn_completed)
+    
+    btn_back = types.InlineKeyboardButton("🔙 Menu chính", callback_data="menu_main")
+    markup.add(btn_back)
+    
+    return text, markup
+
+def show_voice_menu(user_id):
+    """Hiển thị menu Voice Tools"""
+    text = (
+        "🎤 **VOICE TOOLS**\n\n"
+        "✨ Chức năng:\n"
+        "   • Chuyển giọng nói thành văn bản\n"
+        "   • Hỗ trợ tiếng Việt & English\n"
+        "   • Xuất file .txt\n"
+        "   • Powered by OpenAI Whisper\n\n"
+        "📱 Cách sử dụng:\n"
+        "   1. Ghi âm voice message\n"
+        "   2. Gửi cho bot\n"
+        "   3. Nhận file .txt\n\n"
+        "💰 Chi phí: ~150 VND/phút\n\n"
+        "🎯 Thao tác:"
+    )
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn_guide = types.InlineKeyboardButton("📖 Hướng dẫn chi tiết", callback_data="voice_guide")
+    btn_demo = types.InlineKeyboardButton("🎬 Xem demo", callback_data="voice_demo")
+    btn_back = types.InlineKeyboardButton("🔙 Menu chính", callback_data="menu_main")
+    markup.add(btn_guide, btn_demo, btn_back)
+    
+    return text, markup
+
+def show_ai_menu(user_id):
+    """Hiển thị menu AI Assistant"""
+    has_github_token = bool(GITHUB_TOKEN)
+    has_openai_key = bool(OPENAI_API_KEY)
+    
+    text = (
+        "🤖 **AI ASSISTANT**\n\n"
+        "✨ Tính năng AI:\n"
+        "   • 💬 Natural Language Task Creation\n"
+        "   • 🎤 Voice to Text Transcription\n"
+        "   • 📊 Smart Task Analysis (Coming soon)\n"
+        "   • 🔮 AI Suggestions (Coming soon)\n\n"
+        "🔑 Trạng thái API:\n"
+        f"   • GitHub AI: {'✅ Hoạt động' if has_github_token else '❌ Chưa cấu hình'}\n"
+        f"   • OpenAI: {'✅ Hoạt động' if has_openai_key else '❌ Chưa cấu hình'}\n\n"
+        "🎯 Thao tác:"
+    )
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    if has_github_token:
+        btn_nl = types.InlineKeyboardButton("💬 Tạo task bằng ngôn ngữ tự nhiên", callback_data="ai_natural_language")
+    else:
+        btn_nl = types.InlineKeyboardButton("🔒 Setup GitHub AI", callback_data="ai_setup_github")
+    markup.add(btn_nl)
+    
+    btn_features = types.InlineKeyboardButton("🚀 Tính năng sắp có", callback_data="ai_upcoming")
+    btn_back = types.InlineKeyboardButton("🔙 Menu chính", callback_data="menu_main")
+    markup.add(btn_features, btn_back)
+    
+    return text, markup
+
+def show_settings_menu(user_id):
+    """Hiển thị menu Settings"""
+    tz = get_user_timezone(user_id)
+    
+    text = (
+        "⚙️ **SETTINGS**\n\n"
+        f"🌍 **Múi giờ hiện tại:** GMT+{tz}\n"
+        f"📋 **Tổng tasks:** {len(user_tasks.get(user_id, []))}\n\n"
+        "🎯 Cấu hình:"
+    )
+    
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btn_tz = types.InlineKeyboardButton("🌍 Đổi múi giờ", callback_data="menu_timezone")
+    btn_clear = types.InlineKeyboardButton("🗑️ Xóa dữ liệu", callback_data="settings_clear_confirm")
+    markup.add(btn_tz, btn_clear)
+    
+    btn_about = types.InlineKeyboardButton("ℹ️ Về bot", callback_data="settings_about")
+    btn_stats = types.InlineKeyboardButton("📊 Thống kê", callback_data="settings_stats")
+    markup.add(btn_about, btn_stats)
+    
+    btn_back = types.InlineKeyboardButton("🔙 Menu chính", callback_data="menu_main")
+    markup.add(btn_back)
     
     return text, markup
 
@@ -282,34 +406,41 @@ def send_welcome(bot_message):
 @bot.message_handler(commands=['help'])
 def send_help(message):
     help_text = (
-        "📚 HƯỚNG DẪN SỬ DỤNG BOT\n\n"
-        "🎯 SỬ DỤNG MENU:\n"
-        "• Nhấn các nút trên menu để thao tác nhanh\n"
-        "• Không cần gõ lệnh phức tạp\n\n"
-        "🎤 GHI ÂM GIỌNG NÓI:\n"
-        "• Gửi tin nhắn voice để chuyển thành văn bản\n"
-        "• Bot sẽ tạo file .txt và gửi lại cho bạn\n"
-        "• Cần OPENAI_API_KEY (xem hướng dẫn setup)\n\n"
-        "⏰ ĐỊNH DẠNG THỜI GIAN:\n"
-        "• 14:30 - Hôm nay lúc 14:30\n"
-        "• 2m - Sau 2 phút\n"
-        "• 30m - Sau 30 phút\n"
-        "• 2h - Sau 2 giờ\n"
-        "• 2026-07-23 09:00 - Ngày giờ cụ thể\n\n"
-        "🌍 MÚI GIỜ:\n"
-        "• Bot tự động chuyển đổi thời gian\n"
-        "• Đặt múi giờ: VN, TH, SG, JP, KR...\n\n"
-        "💡 MẸO:\n"
-        "• Dùng menu để thao tác nhanh hơn\n"
-        "• Thời gian hiển thị theo múi giờ của bạn\n"
-        "• Gửi voice message để chuyển đổi thành text"
+        "📚 **HƯỚNG DẪN SỬ DỤNG BOT**\n\n"
+        "🎯 **MENU CHÍNH:**\n"
+        "Bot được chia thành 6 category:\n\n"
+        "📋 **Task Manager** - Quản lý công việc\n"
+        "   • Thêm/Xem/Sửa/Xóa tasks\n"
+        "   • Đặt reminders với calendar\n"
+        "   • Lọc theo trạng thái\n\n"
+        "🎤 **Voice Tools** - Chuyển giọng nói thành văn bản\n"
+        "   • Gửi voice → Nhận file .txt\n"
+        "   • Hỗ trợ tiếng Việt & English\n"
+        "   • Powered by OpenAI Whisper\n\n"
+        "🤖 **AI Assistant** - Trợ lý thông minh\n"
+        "   • Natural language task creation\n"
+        "   • AI phân tích và tạo reminder\n"
+        "   • Smart suggestions (sắp có)\n\n"
+        "⚡ **Quick Add** - Thêm task nhanh\n"
+        "   • Thêm task trực tiếp từ menu chính\n"
+        "   • Không cần vào submenu\n\n"
+        "⚙️ **Settings** - Cài đặt\n"
+        "   • Đổi múi giờ\n"
+        "   • Xóa dữ liệu\n"
+        "   • Xem thống kê\n\n"
+        "❓ **Help** - Hướng dẫn và support\n\n"
+        "💡 **MẸO:**\n"
+        "• Dùng menu buttons để thao tác nhanh\n"
+        "• Voice: Ghi âm meeting → Text file\n"
+        "• AI: Nói tự nhiên → Task + Reminder\n"
+        "• Gửi /start để quay về menu chính"
     )
     
     markup = types.InlineKeyboardMarkup()
-    btn_back = types.InlineKeyboardButton("🔙 Quay lại menu", callback_data="menu_main")
-    markup.add(btn_back)
+    btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+    markup.add(btn_menu)
     
-    bot.send_message(message.chat.id, help_text, reply_markup=markup)
+    bot.send_message(message.chat.id, help_text, reply_markup=markup, parse_mode='Markdown')
 
 # Lệnh /timezone để đặt múi giờ
 @bot.message_handler(commands=['timezone'])
@@ -767,27 +898,325 @@ def callback_handler(call):
     # Hướng dẫn
     elif call.data == "menu_help":
         help_text = (
-            "📚 HƯỚNG DẪN SỬ DỤNG BOT\n\n"
-            "🎯 SỬ DỤNG MENU:\n"
+            "📚 **HƯỚNG DẪN SỬ DỤNG BOT**\n\n"
+            "🎯 **SỬ DỤNG MENU:**\n"
             "• Nhấn các nút trên menu để thao tác nhanh\n"
-            "• Không cần gõ lệnh phức tạp\n\n"
-            "⏰ ĐỊNH DẠNG THỜI GIAN:\n"
+            "• Không cần gõ lệnh phức tạp\n"
+            "• Menu được chia thành các category dễ tìm\n\n"
+            "📋 **TASK MANAGEMENT:**\n"
+            "• Thêm, xem, sửa, xóa tasks\n"
+            "• Đặt nhắc nhở cho từng task\n"
+            "• Chọn ngày giờ bằng calendar\n\n"
+            "🎤 **VOICE TOOLS:**\n"
+            "• Gửi voice message → Nhận file .txt\n"
+            "• Hỗ trợ tiếng Việt & English\n"
+            "• Powered by OpenAI Whisper\n\n"
+            "🤖 **AI ASSISTANT:**\n"
+            "• Tạo task bằng ngôn ngữ tự nhiên\n"
+            "• AI phân tích và tạo reminder tự động\n"
+            "• Cần GitHub Token (miễn phí)\n\n"
+            "⏰ **ĐỊNH DẠNG THỜI GIAN:**\n"
             "• 14:30 - Hôm nay lúc 14:30\n"
-            "• 2m - Sau 2 phút\n"
-            "• 30m - Sau 30 phút\n"
-            "• 2h - Sau 2 giờ\n"
-            "• 2026-07-23 09:00 - Ngày giờ cụ thể\n\n"
-            "🌍 MÚI GIỜ:\n"
-            "• Bot tự động chuyển đổi thời gian\n"
-            "• Đặt múi giờ: VN, TH, SG, JP, KR...\n\n"
-            "💡 MẸO:\n"
-            "• Dùng menu để thao tác nhanh hơn\n"
-            "• Thời gian hiển thị theo múi giờ của bạn"
+            "• 2m, 30m, 2h - Sau 2 phút, 30 phút, 2 giờ\n"
+            "• Hoặc dùng calendar picker\n\n"
+            "🌍 **MÚI GIỜ:**\n"
+            "• Vào Settings → Đổi múi giờ\n"
+            "• Thời gian hiển thị theo múi giờ của bạn\n\n"
+            "💡 **MẸO:**\n"
+            "• Quick Add: Thêm task nhanh từ menu chính\n"
+            "• Voice: Ghi âm cuộc họp → Chuyển thành text\n"
+            "• AI: Nói tự nhiên, AI tạo task cho bạn"
         )
         markup = types.InlineKeyboardMarkup()
-        btn_back = types.InlineKeyboardButton("🔙 Quay lại menu", callback_data="menu_main")
+        btn_back = types.InlineKeyboardButton("🔙 Menu chính", callback_data="menu_main")
         markup.add(btn_back)
-        bot.edit_message_text(help_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        bot.edit_message_text(help_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    # ===== CATEGORY MENUS =====
+    
+    # Task Management Category
+    elif call.data == "category_tasks":
+        text, markup = show_tasks_menu(user_id)
+        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    # Voice Tools Category
+    elif call.data == "category_voice":
+        text, markup = show_voice_menu(user_id)
+        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    # AI Assistant Category
+    elif call.data == "category_ai":
+        text, markup = show_ai_menu(user_id)
+        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    # Settings Category
+    elif call.data == "category_settings":
+        text, markup = show_settings_menu(user_id)
+        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    # ===== TASKS SUBMENU =====
+    
+    elif call.data == "tasks_pending":
+        pending_tasks = [t for t in user_tasks.get(user_id, []) if not t.get('done', False)]
+        if not pending_tasks:
+            markup = types.InlineKeyboardMarkup()
+            btn_back = types.InlineKeyboardButton("🔙 Task Manager", callback_data="category_tasks")
+            markup.add(btn_back)
+            bot.edit_message_text(
+                "✅ Không có task nào đang làm!\n\nTất cả đã hoàn thành!",
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=markup
+            )
+        else:
+            text = f"⏳ **TASKS ĐANG LÀM** ({len(pending_tasks)})\n\n"
+            for i, task in enumerate(pending_tasks, 1):
+                text += f"{i}. {task['content']}\n"
+                if task.get('remind_time'):
+                    remind_local = get_user_time(user_id, task['remind_time'])
+                    text += f"   🕐 {remind_local.strftime('%d/%m %H:%M')}\n"
+            
+            markup = types.InlineKeyboardMarkup()
+            btn_back = types.InlineKeyboardButton("🔙 Task Manager", callback_data="category_tasks")
+            markup.add(btn_back)
+            bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    elif call.data == "tasks_completed":
+        completed_tasks = [t for t in user_tasks.get(user_id, []) if t.get('done', False)]
+        if not completed_tasks:
+            markup = types.InlineKeyboardMarkup()
+            btn_back = types.InlineKeyboardButton("🔙 Task Manager", callback_data="category_tasks")
+            markup.add(btn_back)
+            bot.edit_message_text(
+                "📭 Chưa có task nào hoàn thành!",
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=markup
+            )
+        else:
+            text = f"✅ **TASKS ĐÃ HOÀN THÀNH** ({len(completed_tasks)})\n\n"
+            for i, task in enumerate(completed_tasks, 1):
+                text += f"{i}. ~~{task['content']}~~\n"
+            
+            markup = types.InlineKeyboardMarkup()
+            btn_back = types.InlineKeyboardButton("🔙 Task Manager", callback_data="category_tasks")
+            markup.add(btn_back)
+            bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    # ===== VOICE SUBMENU =====
+    
+    elif call.data == "voice_guide":
+        guide_text = (
+            "📖 **HƯỚNG DẪN VOICE TO TEXT**\n\n"
+            "🎯 **Cách sử dụng:**\n"
+            "1. Nhấn giữ icon micro 🎤 trong Telegram\n"
+            "2. Nói nội dung (tiếng Việt hoặc English)\n"
+            "3. Thả tay để gửi\n"
+            "4. Đợi 2-8 giây\n"
+            "5. Nhận file .txt với nội dung đã chuyển đổi\n\n"
+            "⚙️ **Setup (lần đầu):**\n"
+            "• Cần OpenAI API key\n"
+            "• Xem: VOICE_QUICK_SETUP.md\n"
+            "• Chi phí: ~150 VND/phút\n\n"
+            "🔒 **Privacy:**\n"
+            "• File txt luôn gửi về private chat\n"
+            "• Members khác không thấy nội dung\n"
+            "• Mỗi user có data riêng biệt\n\n"
+            "💡 **Tips:**\n"
+            "• Nói rõ ràng, không quá nhanh\n"
+            "• Môi trường yên tĩnh → Độ chính xác cao\n"
+            "• Hỗ trợ voice dài (cả phút)"
+        )
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Voice Tools", callback_data="category_voice")
+        markup.add(btn_back)
+        bot.edit_message_text(guide_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    elif call.data == "voice_demo":
+        demo_text = (
+            "🎬 **DEMO: VOICE TO TEXT**\n\n"
+            "📝 **Ví dụ 1: Ghi chú cuộc họp**\n"
+            "Voice: \"Cuộc họp ngày mai lúc 9 giờ sáng, thảo luận về dự án X\"\n"
+            "→ File txt: Nội dung đầy đủ được transcribe\n\n"
+            "📝 **Ví dụ 2: To-do list**\n"
+            "Voice: \"Nhớ mua sữa, trứng, bánh mì khi về nhà\"\n"
+            "→ File txt: Danh sách mua sắm\n\n"
+            "📝 **Ví dụ 3: Phỏng vấn**\n"
+            "Voice: [5 phút interview]\n"
+            "→ File txt: Transcript hoàn chỉnh\n\n"
+            "🎯 **Thử ngay:**\n"
+            "Gửi voice message cho bot để test!"
+        )
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Voice Tools", callback_data="category_voice")
+        markup.add(btn_back)
+        bot.edit_message_text(demo_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    # ===== AI SUBMENU =====
+    
+    elif call.data == "ai_natural_language":
+        if not GITHUB_TOKEN:
+            bot.answer_callback_query(call.id, "❌ Chưa cấu hình GitHub Token!", show_alert=True)
+            return
+        
+        bot.edit_message_text(
+            "💬 **TẠO TASK BẰNG NGÔN NGỮ TỰ NHIÊN**\n\n"
+            "Nhập nội dung task theo cách tự nhiên, AI sẽ phân tích và tạo task + reminder cho bạn.\n\n"
+            "📝 Ví dụ:\n"
+            "• \"Họp team lúc 2 giờ chiều mai\"\n"
+            "• \"Nhắc tôi mua sữa sau 30 phút\"\n"
+            "• \"Deadline dự án X ngày 30/7\"\n\n"
+            "✍️ Nhập nội dung:",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            parse_mode='Markdown'
+        )
+        user_states[user_id] = "waiting_task_content"
+        bot.answer_callback_query(call.id)
+    
+    elif call.data == "ai_setup_github":
+        setup_text = (
+            "🔑 **SETUP GITHUB AI**\n\n"
+            "GitHub Models API hoàn toàn **MIỄN PHÍ** và rất mạnh!\n\n"
+            "📝 **Cách setup:**\n"
+            "1. Truy cập: github.com/settings/tokens\n"
+            "2. Generate new token (classic)\n"
+            "3. Chọn scopes: repo, read:user\n"
+            "4. Copy token\n"
+            "5. Thêm vào .env: GITHUB_TOKEN=your_token\n"
+            "6. Restart bot\n\n"
+            "📖 **Xem hướng dẫn chi tiết:**\n"
+            "→ AI_SETUP.md trong repository\n\n"
+            "✨ **Tính năng khi có GitHub AI:**\n"
+            "• Natural language task creation\n"
+            "• Tự động phân tích thời gian\n"
+            "• Smart suggestions"
+        )
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 AI Assistant", callback_data="category_ai")
+        markup.add(btn_back)
+        bot.edit_message_text(setup_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    elif call.data == "ai_upcoming":
+        upcoming_text = (
+            "🚀 **TÍNH NĂNG SẮP CÓ**\n\n"
+            "📊 **Smart Task Analysis:**\n"
+            "• AI phân tích productivity patterns\n"
+            "• Gợi ý thời gian làm việc tốt nhất\n"
+            "• Ước lượng thời gian hoàn thành\n\n"
+            "🔮 **AI Suggestions:**\n"
+            "• Gợi ý task dựa trên lịch sử\n"
+            "• Auto-categorize tasks\n"
+            "• Priority recommendations\n\n"
+            "🎯 **Smart Reminders:**\n"
+            "• Context-aware notifications\n"
+            "• Adaptive reminder timing\n"
+            "• Location-based reminders\n\n"
+            "🤝 **Team Collaboration:**\n"
+            "• Shared tasks in groups\n"
+            "• Task assignment\n"
+            "• Progress tracking\n\n"
+            "⏰ **Coming:** Q4 2026\n"
+            "💡 **Đề xuất tính năng?** Liên hệ admin!"
+        )
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 AI Assistant", callback_data="category_ai")
+        markup.add(btn_back)
+        bot.edit_message_text(upcoming_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    # ===== SETTINGS SUBMENU =====
+    
+    elif call.data == "settings_clear_confirm":
+        text = (
+            "⚠️ **XÁC NHẬN XÓA DỮ LIỆU**\n\n"
+            f"Bạn có {len(user_tasks.get(user_id, []))} tasks.\n\n"
+            "Xóa sẽ mất:\n"
+            "• Tất cả tasks\n"
+            "• Tất cả reminders\n"
+            "• Cài đặt múi giờ (về mặc định)\n\n"
+            "⚠️ **Không thể khôi phục!**\n\n"
+            "Bạn chắc chắn?"
+        )
+        markup = types.InlineKeyboardMarkup()
+        btn_yes = types.InlineKeyboardButton("🗑️ Có, xóa hết", callback_data="settings_clear_yes")
+        btn_no = types.InlineKeyboardButton("❌ Không, giữ lại", callback_data="category_settings")
+        markup.add(btn_yes, btn_no)
+        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    elif call.data == "settings_clear_yes":
+        # Xóa tất cả dữ liệu của user
+        user_tasks[user_id] = []
+        user_timezones[user_id] = 7  # Reset về GMT+7
+        user_states[user_id] = None
+        
+        text, markup = show_main_menu(user_id, "🗑️ Đã xóa toàn bộ dữ liệu!")
+        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id, "✅ Đã xóa toàn bộ dữ liệu!")
+    
+    elif call.data == "settings_about":
+        about_text = (
+            "ℹ️ **VỀ BOT**\n\n"
+            "🤖 **Tên:** PHT Task Bot\n"
+            "📦 **Version:** 2.0.0 (Multi-Function)\n"
+            "👨‍💻 **Developer:** PHT Team\n"
+            "📅 **Updated:** 25/07/2026\n\n"
+            "✨ **Tính năng chính:**\n"
+            "• Task Management with Smart Reminders\n"
+            "• Voice to Text Transcription\n"
+            "• AI-Powered Task Creation\n"
+            "• Multi-timezone Support\n"
+            "• Privacy-First Design\n\n"
+            "🔗 **Links:**\n"
+            "• GitHub: github.com/rambo247/task_bot\n"
+            "• Docs: Repository README.md\n\n"
+            "💡 **Tech Stack:**\n"
+            "• Python 3.6+\n"
+            "• pyTelegramBotAPI\n"
+            "• OpenAI Whisper API\n"
+            "• GitHub Models API"
+        )
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Settings", callback_data="category_settings")
+        markup.add(btn_back)
+        bot.edit_message_text(about_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
+    elif call.data == "settings_stats":
+        total_tasks = len(user_tasks.get(user_id, []))
+        pending = sum(1 for t in user_tasks.get(user_id, []) if not t.get('done', False))
+        completed = total_tasks - pending
+        with_reminder = sum(1 for t in user_tasks.get(user_id, []) if t.get('remind_time'))
+        
+        stats_text = (
+            f"📊 **THỐNG KÊ CỦA BẠN**\n\n"
+            f"📋 **Tasks:**\n"
+            f"   • Tổng: {total_tasks}\n"
+            f"   • Đang làm: {pending}\n"
+            f"   • Hoàn thành: {completed}\n"
+            f"   • Có reminder: {with_reminder}\n\n"
+            f"⚙️ **Cài đặt:**\n"
+            f"   • Múi giờ: GMT+{get_user_timezone(user_id)}\n"
+            f"   • GitHub AI: {'✅ Bật' if GITHUB_TOKEN else '❌ Tắt'}\n"
+            f"   • OpenAI: {'✅ Bật' if OPENAI_API_KEY else '❌ Tắt'}\n\n"
+            f"💪 **Completion Rate:**\n"
+            f"   {f'{completed}/{total_tasks} ({int(completed/total_tasks*100)}%)' if total_tasks > 0 else 'Chưa có data'}"
+        )
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Settings", callback_data="category_settings")
+        markup.add(btn_back)
+        bot.edit_message_text(stats_text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
         bot.answer_callback_query(call.id)
     
     # Xử lý action cho từng task
