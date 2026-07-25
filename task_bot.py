@@ -1942,12 +1942,18 @@ def handle_voice_message(message):
         # Gửi file txt VỀ PRIVATE CHAT của user (không gửi vào group)
         # Đảm bảo privacy: mỗi user chỉ nhìn thấy transcription của chính mình
         try:
+            # Tạo inline keyboard với nút quay lại menu
+            markup = types.InlineKeyboardMarkup()
+            btn_menu = types.InlineKeyboardButton("🏠 Menu Chính", callback_data="menu_main")
+            markup.add(btn_menu)
+            
             with open(txt_filename, 'rb') as f:
                 bot.send_document(
                     user_id,  # Gửi về user_id (private chat), không gửi vào group
                     f,
                     caption=f"📝 **Nội dung văn bản:**\n\n{transcribed_text}\n\n✅ File đã được tạo!",
-                    parse_mode='Markdown'
+                    parse_mode='Markdown',
+                    reply_markup=markup
                 )
             
             # Nếu voice được gửi từ group, thông báo user check private chat
@@ -1958,10 +1964,16 @@ def handle_voice_message(message):
                 except:
                     pass
                 
+                # Tạo inline keyboard với nút quay lại menu
+                markup = types.InlineKeyboardMarkup()
+                btn_menu = types.InlineKeyboardButton("🏠 Menu Chính", callback_data="menu_main")
+                markup.add(btn_menu)
+                
                 bot.edit_message_text(
                     "✅ Đã chuyển đổi xong! Tôi đã gửi file txt vào chat riêng với bạn để đảm bảo riêng tư. 🔒",
                     chat_id=chat_id,
-                    message_id=processing_msg.message_id
+                    message_id=processing_msg.message_id,
+                    reply_markup=markup
                 )
                 return
                 
@@ -1974,6 +1986,11 @@ def handle_voice_message(message):
                 except:
                     pass
                 
+                # Tạo inline keyboard với nút quay lại menu
+                markup = types.InlineKeyboardMarkup()
+                btn_menu = types.InlineKeyboardButton("🏠 Menu Chính", callback_data="menu_main")
+                markup.add(btn_menu)
+                
                 bot.edit_message_text(
                     "⚠️ **Không thể gửi file txt vào chat riêng!**\n\n"
                     "📝 Để nhận transcription riêng tư, bạn cần:\n"
@@ -1982,7 +1999,8 @@ def handle_voice_message(message):
                     "3️⃣ Sau đó gửi lại voice message\n\n"
                     "🔒 Điều này đảm bảo các members khác không thấy nội dung của bạn!",
                     chat_id=chat_id,
-                    message_id=processing_msg.message_id
+                    message_id=processing_msg.message_id,
+                    reply_markup=markup
                 )
                 return
             else:
