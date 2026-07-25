@@ -1348,7 +1348,7 @@ def callback_handler(call):
         
         elif action == "hour":
             hour = int(parts[2])
-            date_str = parts[3]
+            date_str = "_".join(parts[3:])  # Join all remaining parts for date
             
             # Parse date
             if date_str == "today":
@@ -1365,7 +1365,7 @@ def callback_handler(call):
         elif action == "minute":
             hour = int(parts[2])
             minute = int(parts[3])
-            date_str = parts[4]
+            date_str = "_".join(parts[4:])  # Join all remaining parts for date
             
             # Parse date
             if date_str == "today":
