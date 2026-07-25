@@ -1,4 +1,4 @@
-import telebot
+﻿import telebot
 import os
 import threading
 import time
@@ -17,7 +17,7 @@ TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8802370170:AAEGZU_Df5OnDQTO7kn9lyf2UzeI
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN', '')  # GitHub token cho AI
 bot = telebot.TeleBot(TOKEN)
 
-# Lưu trữ danh sách task tạm thời theo Chat ID
+# Lưu trữ danh sách task theo User ID (riêng tư cho mỗi user)
 user_tasks = {}
 
 # Lưu trữ timezone offset của mỗi user (theo giờ, mặc định GMT+7 cho Việt Nam)
@@ -25,6 +25,9 @@ user_timezones = {}
 
 # Lưu trữ trạng thái người dùng (đang thêm task, đặt reminder, etc.)
 user_states = {}
+
+# Lưu trữ mapping user_id -> chat_id để gửi reminder
+user_chat_mapping = {}
 
 # Các timezone phổ biến
 TIMEZONES = {
@@ -38,25 +41,35 @@ TIMEZONES = {
     'GMT': 0,   # GMT
 }
 
-def get_user_timezone(chat_id):
-    """Lấy timezone offset của user (mặc định GMT+7)"""
-    return user_timezones.get(chat_id, 7)  # Mặc định Việt Nam GMT+7
+def get_user_id(message):
+    """Lấy user ID từ message (để đảm bảo privacy trong group)"""
+    return message.from_user.id
 
-def get_user_time(chat_id, utc_time=None):
+def update_user_chat_mapping(message):
+    """Cập nhật mapping user_id -> chat_id để gửi reminder"""
+    user_id = get_user_id(message)
+    chat_id = message.chat.id
+    user_chat_mapping[user_id] = chat_id
+
+def get_user_timezone(user_id):
+    """Lấy timezone offset của user (mặc định GMT+7)"""
+    return user_timezones.get(user_id, 7)  # Mặc định Việt Nam GMT+7
+
+def get_user_time(user_id, utc_time=None):
     """Chuyển UTC time sang giờ của user"""
     if utc_time is None:
         utc_time = datetime.utcnow()
-    offset = get_user_timezone(chat_id)
+    offset = get_user_timezone(user_id)
     return utc_time + timedelta(hours=offset)
 
-def to_utc_time(chat_id, local_time):
+def to_utc_time(user_id, local_time):
     """Chuyển giờ local của user sang UTC"""
-    offset = get_user_timezone(chat_id)
+    offset = get_user_timezone(user_id)
     return local_time - timedelta(hours=offset)
 
-def create_calendar(chat_id, year=None, month=None):
+def create_calendar(user_id, year=None, month=None):
     """Tạo calendar keyboard để chọn ngày"""
-    user_now = get_user_time(chat_id)
+    user_now = get_user_time(user_id)
     
     if year is None:
         year = user_now.year
@@ -108,7 +121,7 @@ def create_calendar(chat_id, year=None, month=None):
     
     return markup
 
-def create_time_picker(chat_id, selected_date=None, selected_hour=None):
+def create_time_picker(user_id, selected_date=None, selected_hour=None):
     """Tạo time picker keyboard để chọn giờ"""
     markup = types.InlineKeyboardMarkup(row_width=6)
     
@@ -125,7 +138,7 @@ def create_time_picker(chat_id, selected_date=None, selected_hour=None):
     
     if selected_hour is None:
         # Chọn giờ (0-23)
-        user_now = get_user_time(chat_id)
+        user_now = get_user_time(user_id)
         current_hour = user_now.hour if selected_date and selected_date.date() == user_now.date() else -1
         
         # Hiển thị giờ theo nhóm
@@ -206,20 +219,26 @@ def reminder_checker():
     while True:
         try:
             current_time = datetime.utcnow()  # Sử dụng UTC time
-            for chat_id, tasks in list(user_tasks.items()):
+            for user_id, tasks in list(user_tasks.items()):
                 for task in tasks:
                     if task.get('remind_time') and not task.get('reminded'):
                         remind_time = task['remind_time']  # Đã lưu ở UTC
                         # Kiểm tra nếu đã đến giờ nhắc (trong vòng 1 phút)
                         if remind_time <= current_time < remind_time + timedelta(minutes=1):
                             try:
-                                print(f"Sending reminder to chat_id {chat_id}: {task['content']}")
+                                # Lấy chat_id từ mapping (có thể là private chat hoặc group)
+                                chat_id = user_chat_mapping.get(user_id)
+                                if not chat_id:
+                                    print(f"No chat_id mapping for user_id {user_id}")
+                                    continue
+                                
+                                print(f"Sending reminder to user_id {user_id} (chat_id {chat_id}): {task['content']}")
                                 reminder_text = f"⏰ NHẮC NHỞ!\n\n📌 {task['content']}"
                                 if task.get('done'):
                                     reminder_text += "\n\n✅ (Đã hoàn thành)"
                                 bot.send_message(chat_id, reminder_text)
                                 task['reminded'] = True
-                                print(f"Reminder sent successfully to chat_id {chat_id}")
+                                print(f"Reminder sent successfully to user_id {user_id}")
                             except Exception as e:
                                 print(f"Error sending reminder: {e}")
             time.sleep(30)  # Kiểm tra mỗi 30 giây
@@ -231,9 +250,9 @@ def reminder_checker():
 reminder_thread = threading.Thread(target=reminder_checker, daemon=True)
 reminder_thread.start()
 
-def show_main_menu(chat_id, message_text="👋 Xin chào! Tôi là bot nhắc việc của bạn."):
+def show_main_menu(user_id, message_text="👋 Xin chào! Tôi là bot nhắc việc của bạn."):
     """Hiển thị menu chính với các nút"""
-    tz = get_user_timezone(chat_id)
+    tz = get_user_timezone(user_id)
     text = f"{message_text}\n\n🌍 Múi giờ: GMT+{tz}\n\n📱 Chọn chức năng:"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
@@ -250,9 +269,12 @@ def show_main_menu(chat_id, message_text="👋 Xin chào! Tôi là bot nhắc vi
 # Lệnh /start
 @bot.message_handler(commands=['start'])
 def send_welcome(bot_message):
-    print(f"Received /start from chat_id: {bot_message.chat.id}")
+    print(f"Received /start from chat_id: {bot_message.chat.id}, user_id: {bot_message.from_user.id}")
+    user_id = get_user_id(bot_message)
     chat_id = bot_message.chat.id
-    text, markup = show_main_menu(chat_id)
+    update_user_chat_mapping(bot_message)
+    
+    text, markup = show_main_menu(user_id)
     bot.send_message(chat_id, text, reply_markup=markup)
 
 # Lệnh /help
@@ -286,14 +308,16 @@ def send_help(message):
 # Lệnh /timezone để đặt múi giờ
 @bot.message_handler(commands=['timezone'])
 def set_timezone(message):
-    print(f"Received /timezone from chat_id: {message.chat.id}")
+    print(f"Received /timezone from chat_id: {message.chat.id}, user_id: {message.from_user.id}")
+    user_id = get_user_id(message)
     chat_id = message.chat.id
+    update_user_chat_mapping(message)
     
     try:
         args = message.text.split(maxsplit=1)
         if len(args) < 2:
             # Hiển thị timezone hiện tại và hướng dẫn
-            current_tz = get_user_timezone(chat_id)
+            current_tz = get_user_timezone(user_id)
             tz_list = "\n".join([f"   {code} = GMT+{offset}" for code, offset in sorted(TIMEZONES.items(), key=lambda x: x[1])])
             bot.reply_to(message,
                 f"🌍 Múi giờ hiện tại: GMT+{current_tz}\n\n"
@@ -308,7 +332,7 @@ def set_timezone(message):
         
         # Kiểm tra nếu là mã quốc gia
         if tz_input in TIMEZONES:
-            user_timezones[chat_id] = TIMEZONES[tz_input]
+            user_timezones[user_id] = TIMEZONES[tz_input]
             bot.reply_to(message, f"✅ Đã đặt múi giờ: GMT+{TIMEZONES[tz_input]} ({tz_input})")
             return
         
@@ -319,7 +343,7 @@ def set_timezone(message):
         if tz_input.startswith('+') or tz_input.startswith('-'):
             offset = int(tz_input)
             if -12 <= offset <= 14:
-                user_timezones[chat_id] = offset
+                user_timezones[user_id] = offset
                 bot.reply_to(message, f"✅ Đã đặt múi giờ: GMT{tz_input:+d}")
             else:
                 bot.reply_to(message, "⚠️ Múi giờ không hợp lệ! Vui lòng chọn từ GMT-12 đến GMT+14")
@@ -336,23 +360,26 @@ def set_timezone(message):
 # Lệnh /add để thêm task
 @bot.message_handler(commands=['add'])
 def add_task(message):
-    print(f"Received /add from chat_id: {message.chat.id}")
+    print(f"Received /add from chat_id: {message.chat.id}, user_id: {message.from_user.id}")
+    user_id = get_user_id(message)
     chat_id = message.chat.id
+    update_user_chat_mapping(message)
+    
     # Lấy nội dung sau lệnh /add
     task_content = message.text[len('/add '):].strip()
     
     if not task_content:
         # Chuyển sang chế độ hỏi nội dung
-        user_states[chat_id] = "waiting_task_content"
+        user_states[user_id] = "waiting_task_content"
         bot.reply_to(message, 
             "✍️ Nhập nội dung công việc:\n\n"
             "(Ví dụ: Họp team lúc 9h sáng)")
         return
 
-    if chat_id not in user_tasks:
-        user_tasks[chat_id] = []
+    if user_id not in user_tasks:
+        user_tasks[user_id] = []
     
-    user_tasks[chat_id].append({
+    user_tasks[user_id].append({
         'content': task_content, 
         'done': False,
         'remind_time': None,
@@ -361,7 +388,7 @@ def add_task(message):
     
     # Hiển thị với menu buttons
     markup = types.InlineKeyboardMarkup()
-    btn_remind = types.InlineKeyboardButton("⏰ Đặt nhắc nhở", callback_data=f"task_remind_{len(user_tasks[chat_id])-1}")
+    btn_remind = types.InlineKeyboardButton("⏰ Đặt nhắc nhở", callback_data=f"task_remind_{len(user_tasks[user_id])-1}")
     btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
     btn_add = types.InlineKeyboardButton("➕ Thêm tiếp", callback_data="menu_add")
     markup.add(btn_remind)
@@ -375,35 +402,39 @@ def add_task(message):
 # Lệnh /list để xem danh sách task
 @bot.message_handler(commands=['list'])
 def list_tasks(message):
+    user_id = get_user_id(message)
     chat_id = message.chat.id
-    show_task_list(chat_id)
+    update_user_chat_mapping(message)
+    show_task_list(user_id, chat_id)
 
 # Lệnh /done để đánh dấu hoàn thành
 @bot.message_handler(commands=['done'])
 def mark_done(message):
-    chat_id = message.chat.id
+    user_id = get_user_id(message)
+    update_user_chat_mapping(message)
     
-    if chat_id not in user_tasks or not user_tasks[chat_id]:
+    if user_id not in user_tasks or not user_tasks[user_id]:
         bot.reply_to(message, "📭 Danh sách công việc của bạn đang trống!")
         return
     
     try:
         task_number = int(message.text.split()[1])
-        if 1 <= task_number <= len(user_tasks[chat_id]):
-            user_tasks[chat_id][task_number - 1]['done'] = True
-            bot.reply_to(message, f"✅ Đã đánh dấu hoàn thành: '{user_tasks[chat_id][task_number - 1]['content']}'")
+        if 1 <= task_number <= len(user_tasks[user_id]):
+            user_tasks[user_id][task_number - 1]['done'] = True
+            bot.reply_to(message, f"✅ Đã đánh dấu hoàn thành: '{user_tasks[user_id][task_number - 1]['content']}'")
         else:
-            bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[chat_id])}")
+            bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[user_id])}")
     except (IndexError, ValueError):
         bot.reply_to(message, "⚠️ Vui lòng nhập số thứ tự công việc.\n\nVí dụ: /done 1")
 
 # Lệnh /remind để đặt nhắc nhở
 @bot.message_handler(commands=['remind'])
 def set_reminder(message):
-    print(f"Received /remind from chat_id: {message.chat.id}")
-    chat_id = message.chat.id
+    print(f"Received /remind from chat_id: {message.chat.id}, user_id: {message.from_user.id}")
+    user_id = get_user_id(message)
+    update_user_chat_mapping(message)
     
-    if chat_id not in user_tasks or not user_tasks[chat_id]:
+    if user_id not in user_tasks or not user_tasks[user_id]:
         bot.reply_to(message, "📭 Danh sách công việc của bạn đang trống!")
         return
     
@@ -423,12 +454,12 @@ def set_reminder(message):
         task_number = int(parts[1])
         time_str = parts[2]
         
-        if task_number < 1 or task_number > len(user_tasks[chat_id]):
-            bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[chat_id])}")
+        if task_number < 1 or task_number > len(user_tasks[user_id]):
+            bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[user_id])}")
             return
         
         # Parse thời gian (với timezone của user)
-        remind_time = parse_time(time_str, chat_id)
+        remind_time = parse_time(time_str, user_id)
         
         if remind_time is None:
             bot.reply_to(message, 
@@ -445,18 +476,18 @@ def set_reminder(message):
             return
         
         # Cập nhật reminder (lưu ở UTC)
-        user_tasks[chat_id][task_number - 1]['remind_time'] = remind_time
-        user_tasks[chat_id][task_number - 1]['reminded'] = False
+        user_tasks[user_id][task_number - 1]['remind_time'] = remind_time
+        user_tasks[user_id][task_number - 1]['reminded'] = False
         
-        task_content = user_tasks[chat_id][task_number - 1]['content']
+        task_content = user_tasks[user_id][task_number - 1]['content']
         # Hiển thị theo giờ local của user
-        user_time = get_user_time(chat_id, remind_time)
+        user_time = get_user_time(user_id, remind_time)
         remind_str = user_time.strftime("%d/%m/%Y %H:%M")
         
         bot.reply_to(message, 
             f"⏰ Đã đặt nhắc nhở!\n\n"
             f"📌 Công việc: {task_content}\n"
-            f"🕐 Thời gian: {remind_str} (GMT+{get_user_timezone(chat_id)})")
+            f"🕐 Thời gian: {remind_str} (GMT+{get_user_timezone(user_id)})")
         
     except (IndexError, ValueError) as e:
         bot.reply_to(message, 
@@ -464,7 +495,7 @@ def set_reminder(message):
             "Sử dụng: /remind [số] [thời gian]\n"
             "Ví dụ: /remind 1 14:30")
 
-def parse_time(time_str, chat_id=None):
+def parse_time(time_str, user_id=None):
     """Parse nhiều định dạng thời gian (trả về UTC time)"""
     try:
         # Định dạng: 30m, 2h, 1d (relative time)
@@ -485,7 +516,7 @@ def parse_time(time_str, chat_id=None):
                 hour = int(time_parts[0])
                 minute = int(time_parts[1])
                 # Lấy giờ local của user
-                user_now = get_user_time(chat_id) if chat_id else datetime.utcnow()
+                user_now = get_user_time(user_id) if user_id else datetime.utcnow()
                 remind_time = user_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 
                 # Nếu thời gian đã qua trong ngày hôm nay, chuyển sang ngày mai
@@ -493,17 +524,17 @@ def parse_time(time_str, chat_id=None):
                     remind_time += timedelta(days=1)
                 
                 # Chuyển sang UTC
-                return to_utc_time(chat_id, remind_time) if chat_id else remind_time
+                return to_utc_time(user_id, remind_time) if user_id else remind_time
         
         # Định dạng: YYYY-MM-DD HH:MM (theo giờ local của user)
         if len(time_str.split()) == 2:
             local_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
-            return to_utc_time(chat_id, local_time) if chat_id else local_time
+            return to_utc_time(user_id, local_time) if user_id else local_time
         
         # Định dạng: DD/MM/YYYY HH:MM (theo giờ local của user)
         if '/' in time_str:
             local_time = datetime.strptime(time_str, "%d/%m/%Y %H:%M")
-            return to_utc_time(chat_id, local_time) if chat_id else local_time
+            return to_utc_time(user_id, local_time) if user_id else local_time
         
         return None
     except:
@@ -549,14 +580,14 @@ def call_github_ai(user_message, system_prompt="You are a helpful assistant."):
         print(f"Error calling GitHub AI: {e}")
         return None
 
-def parse_natural_language_task(user_text, chat_id):
+def parse_natural_language_task(user_text, user_id):
     """Sử dụng AI để parse task và thời gian từ ngôn ngữ tự nhiên"""
-    user_now = get_user_time(chat_id)
+    user_now = get_user_time(user_id)
     current_time_str = user_now.strftime("%Y-%m-%d %H:%M")
     
     system_prompt = f"""Bạn là trợ lý thông minh phân tích công việc và thời gian.
 Thời gian hiện tại: {current_time_str}
-Múi giờ: GMT+{get_user_timezone(chat_id)}
+Múi giờ: GMT+{get_user_timezone(user_id)}
 
 Nhiệm vụ: Phân tích câu của user và trả về JSON với format:
 {{
@@ -591,28 +622,30 @@ Chỉ trả về JSON, không thêm text khác."""
 # Lệnh /delete để xóa một task
 @bot.message_handler(commands=['delete'])
 def delete_task(message):
-    chat_id = message.chat.id
+    user_id = get_user_id(message)
+    update_user_chat_mapping(message)
     
-    if chat_id not in user_tasks or not user_tasks[chat_id]:
+    if user_id not in user_tasks or not user_tasks[user_id]:
         bot.reply_to(message, "📭 Danh sách công việc của bạn đang trống!")
         return
     
     try:
         task_number = int(message.text.split()[1])
-        if 1 <= task_number <= len(user_tasks[chat_id]):
-            deleted_task = user_tasks[chat_id].pop(task_number - 1)
+        if 1 <= task_number <= len(user_tasks[user_id]):
+            deleted_task = user_tasks[user_id].pop(task_number - 1)
             bot.reply_to(message, f"🗑️ Đã xóa công việc: '{deleted_task['content']}'")
         else:
-            bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[chat_id])}")
+            bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[user_id])}")
     except (IndexError, ValueError):
         bot.reply_to(message, "⚠️ Vui lòng nhập số thứ tự công việc.\n\nVí dụ: /delete 1")
 
 # Lệnh /clear để xóa danh sách
 @bot.message_handler(commands=['clear'])
 def clear_tasks(message):
-    chat_id = message.chat.id
+    user_id = get_user_id(message)
+    update_user_chat_mapping(message)
     
-    if chat_id not in user_tasks or not user_tasks[chat_id]:
+    if user_id not in user_tasks or not user_tasks[user_id]:
         bot.reply_to(message, "📭 Danh sách công việc của bạn đã trống!")
         return
         
@@ -627,18 +660,20 @@ def clear_tasks(message):
 # Lệnh /cancel để hủy thao tác đang làm
 @bot.message_handler(commands=['cancel'])
 def cancel_action(message):
+    user_id = get_user_id(message)
     chat_id = message.chat.id
+    update_user_chat_mapping(message)
     
-    if chat_id in user_states and user_states[chat_id]:
-        old_state = user_states[chat_id]
-        user_states[chat_id] = None
+    if user_id in user_states and user_states[user_id]:
+        old_state = user_states[user_id]
+        user_states[user_id] = None
         
         # Hiển thị menu hoặc task list tùy theo state
         if old_state.startswith("selecting_remind_") or old_state.startswith("manual_"):
-            text, markup = show_main_menu(chat_id, "❌ Đã hủy đặt nhắc nhở")
+            text, markup = show_main_menu(user_id, "❌ Đã hủy đặt nhắc nhở")
             bot.send_message(chat_id, text, reply_markup=markup)
         else:
-            text, markup = show_main_menu(chat_id, "❌ Đã hủy thao tác")
+            text, markup = show_main_menu(user_id, "❌ Đã hủy thao tác")
             bot.send_message(chat_id, text, reply_markup=markup)
     else:
         bot.reply_to(message, "Không có thao tác nào đang thực hiện.")
@@ -646,18 +681,22 @@ def cancel_action(message):
 # Xử lý callback từ inline keyboard
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
+    user_id = call.from_user.id
     chat_id = call.message.chat.id
-    print(f"Received callback: {call.data} from chat_id: {chat_id}")
+    print(f"Received callback: {call.data} from chat_id: {chat_id}, user_id: {user_id}")
+    
+    # Cập nhật mapping
+    user_chat_mapping[user_id] = chat_id
     
     # Menu chính
     if call.data == "menu_main":
-        text, markup = show_main_menu(chat_id)
+        text, markup = show_main_menu(user_id)
         bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
         bot.answer_callback_query(call.id)
     
     # Thêm công việc
     elif call.data == "menu_add":
-        user_states[chat_id] = "waiting_task_content"
+        user_states[user_id] = "waiting_task_content"
         bot.edit_message_text(
             "✍️ Nhập nội dung công việc:\n\n"
             "(Ví dụ: Họp team lúc 9h sáng)",
@@ -668,7 +707,7 @@ def callback_handler(call):
     
     # Xem danh sách
     elif call.data == "menu_list":
-        if chat_id not in user_tasks or not user_tasks[chat_id]:
+        if user_id not in user_tasks or not user_tasks[user_id]:
             markup = types.InlineKeyboardMarkup()
             btn_add = types.InlineKeyboardButton("➕ Thêm công việc đầu tiên", callback_data="menu_add")
             btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_main")
@@ -681,12 +720,12 @@ def callback_handler(call):
                 reply_markup=markup
             )
         else:
-            show_task_list(chat_id, call.message.message_id)
+            show_task_list(user_id, chat_id, call.message.message_id)
         bot.answer_callback_query(call.id)
     
     # Đặt múi giờ
     elif call.data == "menu_timezone":
-        current_tz = get_user_timezone(chat_id)
+        current_tz = get_user_timezone(user_id)
         markup = types.InlineKeyboardMarkup(row_width=3)
         
         # Các nút timezone
@@ -714,9 +753,9 @@ def callback_handler(call):
     elif call.data.startswith("tz_"):
         tz_code = call.data[3:]
         if tz_code in TIMEZONES:
-            user_timezones[chat_id] = TIMEZONES[tz_code]
+            user_timezones[user_id] = TIMEZONES[tz_code]
             bot.answer_callback_query(call.id, f"✅ Đã đặt múi giờ: GMT+{TIMEZONES[tz_code]}")
-            text, markup = show_main_menu(chat_id, f"✅ Đã đặt múi giờ: GMT+{TIMEZONES[tz_code]}")
+            text, markup = show_main_menu(user_id, f"✅ Đã đặt múi giờ: GMT+{TIMEZONES[tz_code]}")
             bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
     
     # Hướng dẫn
@@ -751,21 +790,21 @@ def callback_handler(call):
         action = parts[1]
         task_idx = int(parts[2])
         
-        if chat_id not in user_tasks or task_idx >= len(user_tasks[chat_id]):
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
             bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
             return
         
         if action == "done":
-            user_tasks[chat_id][task_idx]['done'] = True
+            user_tasks[user_id][task_idx]['done'] = True
             bot.answer_callback_query(call.id, "✅ Đã hoàn thành!")
-            show_task_list(chat_id, call.message.message_id)
+            show_task_list(user_id, chat_id, call.message.message_id)
         
         elif action == "remind":
-            user_states[chat_id] = f"selecting_remind_date_{task_idx}"
-            task_content = user_tasks[chat_id][task_idx]['content']
+            user_states[user_id] = f"selecting_remind_date_{task_idx}"
+            task_content = user_tasks[user_id][task_idx]['content']
             
             # Hiển thị calendar picker
-            calendar_markup = create_calendar(chat_id)
+            calendar_markup = create_calendar(user_id)
             bot.edit_message_text(
                 f"📅 Chọn ngày nhắc nhở cho:\n'{task_content}'",
                 chat_id=chat_id,
@@ -775,16 +814,16 @@ def callback_handler(call):
             bot.answer_callback_query(call.id)
         
         elif action == "delete":
-            deleted_task = user_tasks[chat_id].pop(task_idx)
+            deleted_task = user_tasks[user_id].pop(task_idx)
             bot.answer_callback_query(call.id, f"🗑️ Đã xóa: {deleted_task['content']}")
-            if user_tasks[chat_id]:
-                show_task_list(chat_id, call.message.message_id)
+            if user_tasks[user_id]:
+                show_task_list(user_id, chat_id, call.message.message_id)
             else:
-                text, markup = show_main_menu(chat_id, "✅ Đã xóa task cuối cùng!")
+                text, markup = show_main_menu(user_id, "✅ Đã xóa task cuối cùng!")
                 bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
         
         elif action == "back":
-            show_task_list(chat_id, call.message.message_id)
+            show_task_list(user_id, chat_id, call.message.message_id)
             bot.answer_callback_query(call.id)
     
     # Calendar picker handlers
@@ -801,7 +840,7 @@ def callback_handler(call):
             if month < 1:
                 month = 12
                 year -= 1
-            calendar_markup = create_calendar(chat_id, year, month)
+            calendar_markup = create_calendar(user_id, year, month)
             bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=calendar_markup)
             bot.answer_callback_query(call.id)
         
@@ -811,26 +850,26 @@ def callback_handler(call):
             if month > 12:
                 month = 1
                 year += 1
-            calendar_markup = create_calendar(chat_id, year, month)
+            calendar_markup = create_calendar(user_id, year, month)
             bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=calendar_markup)
             bot.answer_callback_query(call.id)
         
         elif action == "today":
-            user_now = get_user_time(chat_id)
+            user_now = get_user_time(user_id)
             # Chuyển sang chọn giờ cho hôm nay
-            time_markup = create_time_picker(chat_id, user_now)
+            time_markup = create_time_picker(user_id, user_now)
             
-            state = user_states.get(chat_id, "")
+            state = user_states.get(user_id, "")
             if state.startswith("selecting_remind_date_"):
                 task_idx = int(state.split("_")[-1])
-                task_content = user_tasks[chat_id][task_idx]['content']
+                task_content = user_tasks[user_id][task_idx]['content']
                 bot.edit_message_text(
                     f"🕐 Chọn giờ cho hôm nay:\n'{task_content}'",
                     chat_id=chat_id,
                     message_id=call.message.message_id,
                     reply_markup=time_markup
                 )
-                user_states[chat_id] = f"selecting_remind_time_{task_idx}_{user_now.strftime('%Y_%m_%d')}"
+                user_states[user_id] = f"selecting_remind_time_{task_idx}_{user_now.strftime('%Y_%m_%d')}"
             bot.answer_callback_query(call.id)
         
         elif action == "day":
@@ -838,24 +877,24 @@ def callback_handler(call):
             selected_date = datetime(year, month, day)
             
             # Chuyển sang chọn giờ
-            time_markup = create_time_picker(chat_id, selected_date)
+            time_markup = create_time_picker(user_id, selected_date)
             
-            state = user_states.get(chat_id, "")
+            state = user_states.get(user_id, "")
             if state.startswith("selecting_remind_date_"):
                 task_idx = int(state.split("_")[-1])
-                task_content = user_tasks[chat_id][task_idx]['content']
+                task_content = user_tasks[user_id][task_idx]['content']
                 bot.edit_message_text(
                     f"🕐 Chọn giờ - {selected_date.strftime('%d/%m/%Y')}:\n'{task_content}'",
                     chat_id=chat_id,
                     message_id=call.message.message_id,
                     reply_markup=time_markup
                 )
-                user_states[chat_id] = f"selecting_remind_time_{task_idx}_{selected_date.strftime('%Y_%m_%d')}"
+                user_states[user_id] = f"selecting_remind_time_{task_idx}_{selected_date.strftime('%Y_%m_%d')}"
             bot.answer_callback_query(call.id)
         
         elif action == "cancel":
-            show_task_list(chat_id, call.message.message_id)
-            user_states[chat_id] = None
+            show_task_list(user_id, chat_id, call.message.message_id)
+            user_states[user_id] = None
             bot.answer_callback_query(call.id)
     
     # Time picker handlers
@@ -872,13 +911,13 @@ def callback_handler(call):
             
             # Parse date
             if date_str == "today":
-                selected_date = get_user_time(chat_id)
+                selected_date = get_user_time(user_id)
             else:
                 y, m, d = date_str.split("_")
                 selected_date = datetime(int(y), int(m), int(d))
             
             # Hiển thị minute picker
-            time_markup = create_time_picker(chat_id, selected_date, hour)
+            time_markup = create_time_picker(user_id, selected_date, hour)
             bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=time_markup)
             bot.answer_callback_query(call.id)
         
@@ -889,24 +928,24 @@ def callback_handler(call):
             
             # Parse date
             if date_str == "today":
-                selected_date = get_user_time(chat_id)
+                selected_date = get_user_time(user_id)
             else:
                 y, m, d = date_str.split("_")
                 selected_date = datetime(int(y), int(m), int(d))
             
             # Tạo datetime với giờ local
             remind_local = selected_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            remind_utc = to_utc_time(chat_id, remind_local)
+            remind_utc = to_utc_time(user_id, remind_local)
             
             # Lưu reminder
             state = user_states.get(chat_id, "")
             if state.startswith("selecting_remind_time_"):
                 task_idx = int(state.split("_")[3])
                 
-                user_tasks[chat_id][task_idx]['remind_time'] = remind_utc
-                user_tasks[chat_id][task_idx]['reminded'] = False
+                user_tasks[user_id][task_idx]['remind_time'] = remind_utc
+                user_tasks[user_id][task_idx]['reminded'] = False
                 
-                task_content = user_tasks[chat_id][task_idx]['content']
+                task_content = user_tasks[user_id][task_idx]['content']
                 remind_str = remind_local.strftime("%d/%m/%Y %H:%M")
                 
                 markup = types.InlineKeyboardMarkup()
@@ -917,12 +956,12 @@ def callback_handler(call):
                 bot.edit_message_text(
                     f"⏰ Đã đặt nhắc nhở!\n\n"
                     f"📌 {task_content}\n"
-                    f"🕐 {remind_str} (GMT+{get_user_timezone(chat_id)})",
+                    f"🕐 {remind_str} (GMT+{get_user_timezone(user_id)})",
                     chat_id=chat_id,
                     message_id=call.message.message_id,
                     reply_markup=markup
                 )
-                user_states[chat_id] = None
+                user_states[user_id] = None
                 bot.answer_callback_query(call.id, "✅ Đã đặt nhắc nhở!")
         
         elif action == "quick":
@@ -951,11 +990,11 @@ def callback_handler(call):
                     bot.answer_callback_query(call.id, "❌ Lỗi!")
                     return
                 
-                user_tasks[chat_id][task_idx]['remind_time'] = remind_utc
-                user_tasks[chat_id][task_idx]['reminded'] = False
+                user_tasks[user_id][task_idx]['remind_time'] = remind_utc
+                user_tasks[user_id][task_idx]['reminded'] = False
                 
-                task_content = user_tasks[chat_id][task_idx]['content']
-                remind_local = get_user_time(chat_id, remind_utc)
+                task_content = user_tasks[user_id][task_idx]['content']
+                remind_local = get_user_time(user_id, remind_utc)
                 remind_str = remind_local.strftime("%d/%m/%Y %H:%M")
                 
                 markup = types.InlineKeyboardMarkup()
@@ -971,7 +1010,7 @@ def callback_handler(call):
                     message_id=call.message.message_id,
                     reply_markup=markup
                 )
-                user_states[chat_id] = None
+                user_states[user_id] = None
                 bot.answer_callback_query(call.id, f"✅ Nhắc sau {duration}!")
         
         elif action == "manual":
@@ -994,9 +1033,9 @@ def callback_handler(call):
                         return
                     
                     # Đổi state để đợi input
-                    user_states[chat_id] = f"manual_time_input_{task_idx}_{date_str}"
+                    user_states[user_id] = f"manual_time_input_{task_idx}_{date_str}"
                     
-                    task_content = user_tasks[chat_id][task_idx]['content']
+                    task_content = user_tasks[user_id][task_idx]['content']
                     bot.edit_message_text(
                         f"✍️ Nhập giờ cho:\n'{task_content}'\n\n"
                         f"Định dạng: HH:MM (ví dụ: 14:27, 9:05)\n"
@@ -1016,9 +1055,9 @@ def callback_handler(call):
                     task_idx = int(state.split("_")[3])
                     
                     # Đổi state để đợi input phút
-                    user_states[chat_id] = f"manual_minute_input_{task_idx}_{hour}_{date_str}"
+                    user_states[user_id] = f"manual_minute_input_{task_idx}_{hour}_{date_str}"
                     
-                    task_content = user_tasks[chat_id][task_idx]['content']
+                    task_content = user_tasks[user_id][task_idx]['content']
                     bot.edit_message_text(
                         f"✍️ Nhập phút cho {hour}:??\n'{task_content}'\n\n"
                         f"Nhập số phút (0-59), ví dụ: 27, 8, 42\n"
@@ -1033,30 +1072,30 @@ def callback_handler(call):
             
             # Parse date
             if date_str == "today":
-                selected_date = get_user_time(chat_id)
+                selected_date = get_user_time(user_id)
             else:
                 y, m, d = date_str.split("_")
                 selected_date = datetime(int(y), int(m), int(d))
             
             # Quay lại chọn giờ
-            time_markup = create_time_picker(chat_id, selected_date)
+            time_markup = create_time_picker(user_id, selected_date)
             bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id, reply_markup=time_markup)
             bot.answer_callback_query(call.id)
         
         elif action == "cancel":
-            show_task_list(chat_id, call.message.message_id)
-            user_states[chat_id] = None
+            show_task_list(user_id, chat_id, call.message.message_id)
+            user_states[user_id] = None
             bot.answer_callback_query(call.id)
     
     # Xóa tất cả
     elif call.data == "clear_yes":
-        user_tasks[chat_id] = []
-        text, markup = show_main_menu(chat_id, "🧹 Đã xóa toàn bộ danh sách công việc!")
+        user_tasks[user_id] = []
+        text, markup = show_main_menu(user_id, "🧹 Đã xóa toàn bộ danh sách công việc!")
         bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
         bot.answer_callback_query(call.id)
     
     elif call.data == "clear_no":
-        show_task_list(chat_id, call.message.message_id)
+        show_task_list(user_id, chat_id, call.message.message_id)
         bot.answer_callback_query(call.id)
     
     elif call.data == "clear_all":
@@ -1072,9 +1111,9 @@ def callback_handler(call):
         )
         bot.answer_callback_query(call.id)
 
-def show_task_list(chat_id, message_id=None):
+def show_task_list(user_id, chat_id, message_id=None):
     """Hiển thị danh sách task với các nút action"""
-    if chat_id not in user_tasks or not user_tasks[chat_id]:
+    if user_id not in user_tasks or not user_tasks[user_id]:
         text = "📭 Danh sách trống!"
         markup = types.InlineKeyboardMarkup()
         btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_main")
@@ -1083,12 +1122,12 @@ def show_task_list(chat_id, message_id=None):
         text = "📋 DANH SÁCH CÔNG VIỆC:\n\n"
         markup = types.InlineKeyboardMarkup(row_width=1)
         
-        for idx, task in enumerate(user_tasks[chat_id]):
+        for idx, task in enumerate(user_tasks[user_id]):
             status = "✅" if task['done'] else "⏳"
             task_text = f"{idx+1}. {status} {task['content']}"
             
             if task.get('remind_time'):
-                user_time = get_user_time(chat_id, task['remind_time'])
+                user_time = get_user_time(user_id, task['remind_time'])
                 remind_str = user_time.strftime("%d/%m %H:%M")
                 task_text += f"\n   ⏰ {remind_str}"
             
@@ -1115,29 +1154,31 @@ def show_task_list(chat_id, message_id=None):
         bot.send_message(chat_id, text, reply_markup=markup)
 
 # Xử lý tin nhắn text từ user (thêm task, đặt reminder)
-@bot.message_handler(func=lambda message: message.chat.id in user_states and user_states[message.chat.id])
+@bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id])
 def handle_user_input(message):
+    user_id = get_user_id(message)
     chat_id = message.chat.id
-    state = user_states[chat_id]
+    update_user_chat_mapping(message)
+    state = user_states[user_id]
     print(f"Handling user input, state: {state}, text: {message.text}")
     
     # Thêm task
     if state == "waiting_task_content":
         task_content = message.text.strip()
         if chat_id not in user_tasks:
-            user_tasks[chat_id] = []
+            user_tasks[user_id] = []
         
-        user_tasks[chat_id].append({
+        user_tasks[user_id].append({
             'content': task_content,
             'done': False,
             'remind_time': None,
             'reminded': False
         })
         
-        user_states[chat_id] = None
+        user_states[user_id] = None
         
         markup = types.InlineKeyboardMarkup()
-        btn_remind = types.InlineKeyboardButton("⏰ Đặt nhắc nhở", callback_data=f"task_remind_{len(user_tasks[chat_id])-1}")
+        btn_remind = types.InlineKeyboardButton("⏰ Đặt nhắc nhở", callback_data=f"task_remind_{len(user_tasks[user_id])-1}")
         btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
         btn_add = types.InlineKeyboardButton("➕ Thêm tiếp", callback_data="menu_add")
         markup.add(btn_remind)
@@ -1193,14 +1234,14 @@ def handle_user_input(message):
             
             # Parse date
             if date_str == "today":
-                selected_date = get_user_time(chat_id)
+                selected_date = get_user_time(user_id)
             else:
                 y, m, d = date_str.split("_")
                 selected_date = datetime(int(y), int(m), int(d))
             
             # Tạo datetime với giờ local
             remind_local = selected_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            remind_utc = to_utc_time(chat_id, remind_local)
+            remind_utc = to_utc_time(user_id, remind_local)
             
             # Kiểm tra nếu là quá khứ
             if remind_utc <= datetime.utcnow():
@@ -1208,11 +1249,11 @@ def handle_user_input(message):
                 return
             
             # Lưu reminder
-            user_tasks[chat_id][task_idx]['remind_time'] = remind_utc
-            user_tasks[chat_id][task_idx]['reminded'] = False
-            user_states[chat_id] = None
+            user_tasks[user_id][task_idx]['remind_time'] = remind_utc
+            user_tasks[user_id][task_idx]['reminded'] = False
+            user_states[user_id] = None
             
-            task_content = user_tasks[chat_id][task_idx]['content']
+            task_content = user_tasks[user_id][task_idx]['content']
             remind_str = remind_local.strftime("%d/%m/%Y %H:%M")
             
             markup = types.InlineKeyboardMarkup()
@@ -1223,7 +1264,7 @@ def handle_user_input(message):
             bot.reply_to(message,
                 f"⏰ Đã đặt nhắc nhở!\n\n"
                 f"📌 {task_content}\n"
-                f"🕐 {remind_str} (GMT+{get_user_timezone(chat_id)})",
+                f"🕐 {remind_str} (GMT+{get_user_timezone(user_id)})",
                 reply_markup=markup
             )
         
@@ -1259,14 +1300,14 @@ def handle_user_input(message):
             
             # Parse date
             if date_str == "today":
-                selected_date = get_user_time(chat_id)
+                selected_date = get_user_time(user_id)
             else:
                 y, m, d = date_str.split("_")
                 selected_date = datetime(int(y), int(m), int(d))
             
             # Tạo datetime với giờ local
             remind_local = selected_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            remind_utc = to_utc_time(chat_id, remind_local)
+            remind_utc = to_utc_time(user_id, remind_local)
             
             # Kiểm tra nếu là quá khứ
             if remind_utc <= datetime.utcnow():
@@ -1274,11 +1315,11 @@ def handle_user_input(message):
                 return
             
             # Lưu reminder
-            user_tasks[chat_id][task_idx]['remind_time'] = remind_utc
-            user_tasks[chat_id][task_idx]['reminded'] = False
-            user_states[chat_id] = None
+            user_tasks[user_id][task_idx]['remind_time'] = remind_utc
+            user_tasks[user_id][task_idx]['reminded'] = False
+            user_states[user_id] = None
             
-            task_content = user_tasks[chat_id][task_idx]['content']
+            task_content = user_tasks[user_id][task_idx]['content']
             remind_str = remind_local.strftime("%d/%m/%Y %H:%M")
             
             markup = types.InlineKeyboardMarkup()
@@ -1289,7 +1330,7 @@ def handle_user_input(message):
             bot.reply_to(message,
                 f"⏰ Đã đặt nhắc nhở!\n\n"
                 f"📌 {task_content}\n"
-                f"🕐 {remind_str} (GMT+{get_user_timezone(chat_id)})",
+                f"🕐 {remind_str} (GMT+{get_user_timezone(user_id)})",
                 reply_markup=markup
             )
         
@@ -1315,12 +1356,12 @@ def handle_user_input(message):
             bot.reply_to(message, "⚠️ Thời gian phải là tương lai!\n\nThử lại:")
             return
         
-        user_tasks[chat_id][task_idx]['remind_time'] = remind_time
-        user_tasks[chat_id][task_idx]['reminded'] = False
-        user_states[chat_id] = None
+        user_tasks[user_id][task_idx]['remind_time'] = remind_time
+        user_tasks[user_id][task_idx]['reminded'] = False
+        user_states[user_id] = None
         
-        task_content = user_tasks[chat_id][task_idx]['content']
-        user_time = get_user_time(chat_id, remind_time)
+        task_content = user_tasks[user_id][task_idx]['content']
+        user_time = get_user_time(user_id, remind_time)
         remind_str = user_time.strftime("%d/%m/%Y %H:%M")
         
         markup = types.InlineKeyboardMarkup()
@@ -1331,7 +1372,7 @@ def handle_user_input(message):
         bot.reply_to(message,
             f"⏰ Đã đặt nhắc nhở!\n\n"
             f"📌 {task_content}\n"
-            f"🕐 {remind_str} (GMT+{get_user_timezone(chat_id)})",
+            f"🕐 {remind_str} (GMT+{get_user_timezone(user_id)})",
             reply_markup=markup
         )
 
@@ -1341,21 +1382,23 @@ def handle_user_input(message):
 @bot.message_handler(func=lambda message: message.chat.id not in user_states or not user_states[message.chat.id])
 def handle_natural_language(message):
     """Xử lý ngôn ngữ tự nhiên với AI"""
+    user_id = get_user_id(message)
     chat_id = message.chat.id
+    update_user_chat_mapping(message)
     user_text = message.text.strip()
     
     # Bỏ qua nếu là lệnh
     if user_text.startswith('/'):
         return
     
-    print(f"Natural language input from {chat_id}: {user_text}")
+    print(f"Natural language input from user_id {user_id} (chat_id {chat_id}): {user_text}")
     
     # Nếu không có GitHub token, sử dụng mode thông thường
     if not GITHUB_TOKEN:
         bot.reply_to(message, 
             "💡 Gửi tin nhắn tự do! Nhưng cần GitHub token để kích hoạt AI.\n\n"
             "Dùng /add để thêm task hoặc chọn menu bên dưới.",
-            reply_markup=show_main_menu(chat_id)[1]
+            reply_markup=show_main_menu(user_id)[1]
         )
         return
     
@@ -1363,14 +1406,14 @@ def handle_natural_language(message):
     bot.send_chat_action(chat_id, 'typing')
     
     # Parse với AI
-    ai_result = parse_natural_language_task(user_text, chat_id)
+    ai_result = parse_natural_language_task(user_text, user_id)
     
     if not ai_result:
         # AI không trả về kết quả, fallback
         bot.reply_to(message,
             "🤔 Tôi chưa hiểu rõ ý bạn.\n\n"
             "Thử lại hoặc dùng /add để thêm task.",
-            reply_markup=show_main_menu(chat_id)[1]
+            reply_markup=show_main_menu(user_id)[1]
         )
         return
     
@@ -1380,11 +1423,11 @@ def handle_natural_language(message):
     time_str = ai_result.get('time', '')
     
     # Thêm task
-    if chat_id not in user_tasks:
-        user_tasks[chat_id] = []
+    if user_id not in user_tasks:
+        user_tasks[user_id] = []
     
-    task_idx = len(user_tasks[chat_id])
-    user_tasks[chat_id].append({
+    task_idx = len(user_tasks[user_id])
+    user_tasks[user_id].append({
         'content': task_content,
         'done': False,
         'remind_time': None,
@@ -1395,12 +1438,12 @@ def handle_natural_language(message):
     
     # Xử lý reminder nếu có
     if has_reminder and time_str:
-        remind_time = parse_time(time_str, chat_id)
+        remind_time = parse_time(time_str, user_id)
         if remind_time and remind_time > datetime.utcnow():
-            user_tasks[chat_id][task_idx]['remind_time'] = remind_time
-            user_tasks[chat_id][task_idx]['reminded'] = False
+            user_tasks[user_id][task_idx]['remind_time'] = remind_time
+            user_tasks[user_id][task_idx]['reminded'] = False
             
-            user_time = get_user_time(chat_id, remind_time)
+            user_time = get_user_time(user_id, remind_time)
             remind_str = user_time.strftime("%d/%m/%Y %H:%M")
             response_text += f"\n⏰ Nhắc nhở: {remind_str}"
     
