@@ -1025,7 +1025,8 @@ def callback_handler(call):
             
             if sub_action == "full":
                 # Nhập giờ đầy đủ HH:MM
-                date_str = parts[3]
+                # date_str có thể có dấu _ (VD: 2026_07_25) nên phải join từ parts[3] trở đi
+                date_str = "_".join(parts[3:])
                 
                 state = user_states.get(user_id, "")
                 if state.startswith("selecting_remind_"):
@@ -1054,7 +1055,8 @@ def callback_handler(call):
             elif sub_action == "minute":
                 # Nhập chỉ phút
                 hour = int(parts[3])
-                date_str = parts[4]
+                # date_str có thể có dấu _ (VD: 2026_07_25) nên phải join từ parts[4] trở đi
+                date_str = "_".join(parts[4:])
                 
                 state = user_states.get(user_id, "")
                 if state.startswith("selecting_remind_time_"):
@@ -1074,7 +1076,8 @@ def callback_handler(call):
                     bot.answer_callback_query(call.id)
         
         elif action == "back":
-            date_str = parts[2]
+            # date_str có thể có dấu _ (VD: 2026_07_25) nên phải join từ parts[2] trở đi
+            date_str = "_".join(parts[2:])
             
             # Parse date
             if date_str == "today":
