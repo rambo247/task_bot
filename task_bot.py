@@ -1509,28 +1509,53 @@ def handle_voice_message(message):
         
         # Gửi file txt VỀ PRIVATE CHAT của user (không gửi vào group)
         # Đảm bảo privacy: mỗi user chỉ nhìn thấy transcription của chính mình
-        with open(txt_filename, 'rb') as f:
-            bot.send_document(
-                user_id,  # Gửi về user_id (private chat), không gửi vào group
-                f,
-                caption=f"📝 **Nội dung văn bản:**\n\n{transcribed_text}\n\n✅ File đã được tạo!",
-                parse_mode='Markdown'
-            )
-        
-        # Nếu voice được gửi từ group, thông báo user check private chat
-        if chat_id != user_id:  # Nếu là group chat
-            # Xóa file txt tạm
-            try:
-                os.remove(txt_filename)
-            except:
-                pass
+        try:
+            with open(txt_filename, 'rb') as f:
+                bot.send_document(
+                    user_id,  # Gửi về user_id (private chat), không gửi vào group
+                    f,
+                    caption=f"📝 **Nội dung văn bản:**\n\n{transcribed_text}\n\n✅ File đã được tạo!",
+                    parse_mode='Markdown'
+                )
             
-            bot.edit_message_text(
-                "✅ Đã chuyển đổi xong! Tôi đã gửi file txt vào chat riêng với bạn để đảm bảo riêng tư. 🔒",
-                chat_id=chat_id,
-                message_id=processing_msg.message_id
-            )
-            return
+            # Nếu voice được gửi từ group, thông báo user check private chat
+            if chat_id != user_id:  # Nếu là group chat
+                # Xóa file txt tạm
+                try:
+                    os.remove(txt_filename)
+                except:
+                    pass
+                
+                bot.edit_message_text(
+                    "✅ Đã chuyển đổi xong! Tôi đã gửi file txt vào chat riêng với bạn để đảm bảo riêng tư. 🔒",
+                    chat_id=chat_id,
+                    message_id=processing_msg.message_id
+                )
+                return
+                
+        except telebot.apihelper.ApiTelegramException as api_error:
+            # Không thể gửi vào private chat (user chưa start bot)
+            if "bot can't initiate conversation" in str(api_error) or "Forbidden" in str(api_error):
+                # Xóa file txt tạm
+                try:
+                    os.remove(txt_filename)
+                except:
+                    pass
+                
+                bot.edit_message_text(
+                    "⚠️ **Không thể gửi file txt vào chat riêng!**\n\n"
+                    "📝 Để nhận transcription riêng tư, bạn cần:\n"
+                    "1️⃣ Mở chat riêng với bot\n"
+                    "2️⃣ Gửi lệnh /start\n"
+                    "3️⃣ Sau đó gửi lại voice message\n\n"
+                    "🔒 Điều này đảm bảo các members khác không thấy nội dung của bạn!",
+                    chat_id=chat_id,
+                    message_id=processing_msg.message_id
+                )
+                return
+            else:
+                # Lỗi khác, re-raise để exception handler chính xử lý
+                raise
         
         # Xóa file txt tạm (private chat)
         try:
@@ -1543,14 +1568,52 @@ def handle_voice_message(message):
         
     except Exception as e:
         print(f"Error handling voice message: {e}")
+        # Cleanup file nếu còn
+        try:
+            if 'txt_filename' in locals():
+                os.remove(txt_filename)
+        except:
+            pass
+        try:
+            if 'audio_path' in locals():
+                os.remove(audio_path)
+        except:
+            pass
+        
+        # Hiển thị lỗi cho user
+        error_msg = "⚠️ Đã xảy ra lỗi khi xử lý!\n\n"
+        
+        # Phân tích lỗi cụ thể
+        if "insufficient_quota" in str(e) or "quota" in str(e).lower():
+            error_msg += "💳 **Lỗi OpenAI API:** Tài khoản hết credits\n\n"
+            error_msg += "📝 Giải pháp:\n"
+            error_msg += "• Thêm payment method tại: platform.openai.com\n"
+            error_msg += "• Nạp credits ($5 = 833 phút voice)\n"
+            error_msg += "• Kiểm tra usage tại: platform.openai.com/usage"
+        elif "401" in str(e) or "authentication" in str(e).lower():
+            error_msg += "🔑 **Lỗi API Key:** OpenAI key không hợp lệ\n\n"
+            error_msg += "📝 Giải pháp:\n"
+            error_msg += "• Kiểm tra OPENAI_API_KEY trong .env\n"
+            error_msg += "• Tạo key mới tại: platform.openai.com/api-keys"
+        elif "timeout" in str(e).lower() or "connection" in str(e).lower():
+            error_msg += "🌐 **Lỗi mạng:** Không thể kết nối OpenAI API\n\n"
+            error_msg += "📝 Vui lòng thử lại sau vài phút"
+        else:
+            error_msg += f"📝 Chi tiết: {str(e)[:100]}\n\n"
+            error_msg += "💡 Vui lòng thử lại hoặc liên hệ admin"
+        
         try:
             bot.edit_message_text(
-                f"❌ Có lỗi xảy ra: {str(e)}",
+                error_msg,
                 chat_id=chat_id,
-                message_id=processing_msg.message_id
+                message_id=processing_msg.message_id,
+                parse_mode='Markdown'
             )
         except:
-            bot.reply_to(message, f"❌ Có lỗi xảy ra: {str(e)}")
+            try:
+                bot.reply_to(message, error_msg, parse_mode='Markdown')
+            except:
+                bot.reply_to(message, "⚠️ Đã xảy ra lỗi khi xử lý! Vui lòng thử lại.")
 
 # Xử lý tin nhắn ngôn ngữ tự nhiên (không phải lệnh, không trong state)
 @bot.message_handler(func=lambda message: message.chat.id not in user_states or not user_states[message.chat.id])

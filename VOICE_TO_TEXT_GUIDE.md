@@ -141,6 +141,20 @@ Hiện tại **KHÔNG CÓ** alternative hoàn toàn miễn phí với chất lư
 
 ## 🆘 Troubleshooting
 
+### ❌ "Không thể gửi file txt vào chat riêng!"
+
+**Nguyên nhân:** Bạn chưa start bot trong private chat
+
+**Fix:**
+1. Mở chat riêng với bot (click vào bot name)
+2. Gửi `/start`
+3. Quay lại group và gửi voice message lại
+
+**Tại sao cần start bot?**
+- Telegram không cho phép bot gửi message đầu tiên cho user
+- User phải start conversation trước
+- Sau khi start, bot có thể gửi message vào private chat
+
 ### ❌ "Tính năng chuyển đổi giọng nói cần OpenAI API key"
 
 **Nguyên nhân:** Chưa có OPENAI_API_KEY trong .env
@@ -255,12 +269,23 @@ Voice: [Ghi âm bài giảng]
 - ✅ Mỗi file có tên unique: `transcription_{user_id}_{timestamp}.txt`
 
 ### 📱 Group Chat Behavior
-**Khi gửi voice trong group:**
+**⚠️ QUAN TRỌNG: Trước khi dùng trong group**
+
+Bạn PHẢI start bot trong private chat trước:
+1. Mở chat riêng với bot
+2. Gửi `/start`
+3. Sau đó mới có thể dùng voice trong group
+
+**Khi gửi voice trong group (sau khi đã start):**
 1. Bot nhận voice message
 2. Bot hiển thị "🎤 Đang xử lý..." trong group
 3. Bot gửi file txt về **private chat** với bạn 🔒
-4. Bot thông báo trong group: "✅ Đã gửi vào chat riêng với bạn"
+4. Bot thông báo trong group: "✅ Đã gửi vào chat riêng"
 5. **Members khác KHÔNG nhìn thấy nội dung**
+
+**Nếu chưa start bot trong private chat:**
+- Bot sẽ thông báo: "⚠️ Không thể gửi file txt vào chat riêng!"
+- Hướng dẫn: Mở chat riêng → /start → Gửi lại voice
 
 **Khi gửi voice trong private chat:**
 1. Bot nhận voice message

@@ -75,11 +75,22 @@ screen -dmS taskbot python3 task_bot.py
 5. **Nhận file .txt** ✅
 
 ### Group Chat (Riêng tư 🔒):
+
+**⚠️ Bước đầu tiên (BẮT BUỘC):**
+1. **Mở chat riêng với bot**
+2. **Gửi `/start`** 
+3. ✅ Xong! Giờ có thể dùng voice trong group
+
+**Sau khi đã start:**
 1. **Gửi voice message** trong group
 2. Bot hiển thị "Đang xử lý..." trong group
 3. **File .txt được gửi về PRIVATE CHAT** với bạn
 4. **Members khác KHÔNG nhìn thấy** nội dung
 5. Bot thông báo trong group: "Đã gửi vào chat riêng" ✅
+
+**Nếu chưa start:**
+- Bot thông báo: "Không thể gửi file txt vào chat riêng!"
+- Làm theo hướng dẫn phía trên ↑
 
 ---
 
@@ -94,13 +105,17 @@ screen -dmS taskbot python3 task_bot.py
 
 ## ❌ Lỗi thường gặp
 
+### "Không thể gửi file txt vào chat riêng"
+→ **Chưa start bot trong private chat**
+- Fix: Mở chat riêng → `/start` → Gửi lại voice
+
 ### "Cần OpenAI API key"
 → Chưa thêm key vào .env, xem bước 2 ↑
 
-### "Không thể chuyển đổi"
+### "Không thể chuyển đổi" / "Hết credits"
 → Check:
 - API key đúng chưa?
-- Hết credits OpenAI chưa?
+- Hết credits OpenAI chưa? → Nạp thêm credits
 - Internet có ok không?
 
 ### Bot xử lý chậm
