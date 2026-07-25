@@ -944,7 +944,7 @@ def callback_handler(call):
             remind_utc = to_utc_time(user_id, remind_local)
             
             # Lưu reminder
-            state = user_states.get(chat_id, "")
+            state = user_states.get(user_id, "")
             if state.startswith("selecting_remind_time_"):
                 task_idx = int(state.split("_")[3])
                 
@@ -985,7 +985,7 @@ def callback_handler(call):
                 return
             
             # Lưu reminder
-            state = user_states.get(chat_id, "")
+            state = user_states.get(user_id, "")
             if state.startswith("selecting_remind_"):
                 # Extract task_idx from state
                 if state.startswith("selecting_remind_date_"):
@@ -1027,7 +1027,7 @@ def callback_handler(call):
                 # Nhập giờ đầy đủ HH:MM
                 date_str = parts[3]
                 
-                state = user_states.get(chat_id, "")
+                state = user_states.get(user_id, "")
                 if state.startswith("selecting_remind_"):
                     # Extract task_idx from state
                     if state.startswith("selecting_remind_date_"):
@@ -1056,7 +1056,7 @@ def callback_handler(call):
                 hour = int(parts[3])
                 date_str = parts[4]
                 
-                state = user_states.get(chat_id, "")
+                state = user_states.get(user_id, "")
                 if state.startswith("selecting_remind_time_"):
                     task_idx = int(state.split("_")[3])
                     
