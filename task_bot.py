@@ -15,6 +15,7 @@ load_dotenv()
 # Lấy token từ biến môi trường hoặc sử dụng token mặc định
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8802370170:AAEGZU_Df5OnDQTO7kn9lyf2UzeIbbh2KPk')
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN', '')  # GitHub token cho AI
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')  # OpenAI API key cho Whisper (Speech-to-Text)
 bot = telebot.TeleBot(TOKEN)
 
 # Lưu trữ danh sách task theo User ID (riêng tư cho mỗi user)
@@ -285,6 +286,10 @@ def send_help(message):
         "🎯 SỬ DỤNG MENU:\n"
         "• Nhấn các nút trên menu để thao tác nhanh\n"
         "• Không cần gõ lệnh phức tạp\n\n"
+        "🎤 GHI ÂM GIỌNG NÓI:\n"
+        "• Gửi tin nhắn voice để chuyển thành văn bản\n"
+        "• Bot sẽ tạo file .txt và gửi lại cho bạn\n"
+        "• Cần OPENAI_API_KEY (xem hướng dẫn setup)\n\n"
         "⏰ ĐỊNH DẠNG THỜI GIAN:\n"
         "• 14:30 - Hôm nay lúc 14:30\n"
         "• 2m - Sau 2 phút\n"
@@ -296,7 +301,8 @@ def send_help(message):
         "• Đặt múi giờ: VN, TH, SG, JP, KR...\n\n"
         "💡 MẸO:\n"
         "• Dùng menu để thao tác nhanh hơn\n"
-        "• Thời gian hiển thị theo múi giờ của bạn"
+        "• Thời gian hiển thị theo múi giờ của bạn\n"
+        "• Gửi voice message để chuyển đổi thành text"
     )
     
     markup = types.InlineKeyboardMarkup()
@@ -1377,6 +1383,158 @@ def handle_user_input(message):
         )
 
 # ============= NATURAL LANGUAGE HANDLER với AI =============
+
+# ============= VOICE TO TEXT FEATURES =============
+
+def download_voice_file(file_id):
+    """Download voice file từ Telegram"""
+    try:
+        file_info = bot.get_file(file_id)
+        file_path = file_info.file_path
+        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+        
+        # Download file
+        response = requests.get(file_url, timeout=30)
+        if response.status_code == 200:
+            # Lưu tạm thời
+            temp_filename = f"voice_{file_id}.ogg"
+            with open(temp_filename, 'wb') as f:
+                f.write(response.content)
+            return temp_filename
+        return None
+    except Exception as e:
+        print(f"Error downloading voice: {e}")
+        return None
+
+def transcribe_audio(audio_file_path):
+    """Chuyển đổi audio thành text bằng OpenAI Whisper API"""
+    if not OPENAI_API_KEY:
+        return None
+    
+    try:
+        # Sử dụng OpenAI Whisper API
+        url = "https://api.openai.com/v1/audio/transcriptions"
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
+        
+        with open(audio_file_path, 'rb') as audio_file:
+            files = {
+                'file': (audio_file_path, audio_file, 'audio/ogg'),
+                'model': (None, 'whisper-1'),
+                'language': (None, 'vi'),  # Tiếng Việt
+                'response_format': (None, 'text')
+            }
+            
+            response = requests.post(url, headers=headers, files=files, timeout=30)
+            
+            if response.status_code == 200:
+                return response.text.strip()
+            else:
+                print(f"Whisper API error: {response.status_code} - {response.text}")
+                return None
+    except Exception as e:
+        print(f"Error transcribing audio: {e}")
+        return None
+
+@bot.message_handler(content_types=['voice'])
+def handle_voice_message(message):
+    """Xử lý tin nhắn voice - chuyển đổi thành text"""
+    user_id = get_user_id(message)
+    chat_id = message.chat.id
+    update_user_chat_mapping(message)
+    
+    print(f"Voice message from user_id {user_id} (chat_id {chat_id})")
+    
+    # Kiểm tra có OpenAI API key không
+    if not OPENAI_API_KEY:
+        bot.reply_to(message, 
+            "🎤 Tính năng chuyển đổi giọng nói cần OpenAI API key!\n\n"
+            "📝 Thêm OPENAI_API_KEY vào file .env để sử dụng tính năng này.\n"
+            "💡 Xem hướng dẫn: /help"
+        )
+        return
+    
+    # Gửi typing indicator
+    bot.send_chat_action(chat_id, 'typing')
+    
+    # Thông báo đang xử lý
+    processing_msg = bot.reply_to(message, "🎤 Đang xử lý giọng nói...")
+    
+    try:
+        # Download voice file
+        voice_file_id = message.voice.file_id
+        audio_path = download_voice_file(voice_file_id)
+        
+        if not audio_path:
+            bot.edit_message_text(
+                "❌ Không thể tải xuống file giọng nói.",
+                chat_id=chat_id,
+                message_id=processing_msg.message_id
+            )
+            return
+        
+        # Cập nhật status
+        bot.edit_message_text(
+            "🤖 Đang chuyển đổi giọng nói thành văn bản...",
+            chat_id=chat_id,
+            message_id=processing_msg.message_id
+        )
+        
+        # Transcribe audio
+        transcribed_text = transcribe_audio(audio_path)
+        
+        # Xóa file tạm
+        try:
+            os.remove(audio_path)
+        except:
+            pass
+        
+        if not transcribed_text:
+            bot.edit_message_text(
+                "❌ Không thể chuyển đổi giọng nói. Vui lòng thử lại.",
+                chat_id=chat_id,
+                message_id=processing_msg.message_id
+            )
+            return
+        
+        # Tạo file txt
+        txt_filename = f"transcription_{user_id}_{int(time.time())}.txt"
+        with open(txt_filename, 'w', encoding='utf-8') as f:
+            f.write("=== CHUYỂN ĐỔI GIỌNG NÓI THÀNH VĂN BẢN ===\n")
+            f.write(f"Thời gian: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
+            f.write(f"Người dùng: {message.from_user.first_name}\n")
+            f.write("="*50 + "\n\n")
+            f.write(transcribed_text)
+        
+        # Gửi file txt
+        with open(txt_filename, 'rb') as f:
+            bot.send_document(
+                chat_id,
+                f,
+                caption=f"📝 **Nội dung văn bản:**\n\n{transcribed_text}\n\n✅ File đã được tạo!",
+                parse_mode='Markdown'
+            )
+        
+        # Xóa file txt tạm
+        try:
+            os.remove(txt_filename)
+        except:
+            pass
+        
+        # Xóa processing message
+        bot.delete_message(chat_id, processing_msg.message_id)
+        
+    except Exception as e:
+        print(f"Error handling voice message: {e}")
+        try:
+            bot.edit_message_text(
+                f"❌ Có lỗi xảy ra: {str(e)}",
+                chat_id=chat_id,
+                message_id=processing_msg.message_id
+            )
+        except:
+            bot.reply_to(message, f"❌ Có lỗi xảy ra: {str(e)}")
 
 # Xử lý tin nhắn ngôn ngữ tự nhiên (không phải lệnh, không trong state)
 @bot.message_handler(func=lambda message: message.chat.id not in user_states or not user_states[message.chat.id])

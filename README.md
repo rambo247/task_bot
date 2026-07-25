@@ -4,21 +4,34 @@ Bot Telegram quản lý công việc đơn giản và tiện lợi, giúp bạn 
 
 ## ✨ Tính năng
 
+### 🎯 Quản lý Tasks
 - ➕ Thêm công việc mới
 - 📅 **Chọn ngày từ lịch trực quan** (MỚI!)
 - 🕐 **Chọn giờ dễ dàng với time picker** (MỚI!)
 - ✍️ **Nhập giờ chính xác (HH:MM)** - Không giới hạn phút! (MỚI!)
 - ⏰ **Đặt nhắc nhở tự động**
-- 🌍 **Hỗ trợ múi giờ (GMT+7 mặc định cho Việt Nam)**
-- 📱 **Menu tương tác với buttons** (Không cần gõ lệnh!)
 - 📝 Xem danh sách công việc
 - ✅ Đánh dấu công việc hoàn thành
 - 🗑️ Xóa công việc cụ thể
 - 🧹 Xóa toàn bộ danh sách (có xác nhận)
+- 🚫 Lệnh /cancel để hủy thao tác đang làm
+
+### 🎤 Voice to Text (MỚI! ⭐)
+- **Ghi âm giọng nói** → Chuyển thành văn bản tự động
+- **Hỗ trợ tiếng Việt** và nhiều ngôn ngữ khác
+- **Xuất file .txt** với nội dung đã chuyển đổi
+- **Sử dụng OpenAI Whisper API** (độ chính xác cao)
+- Chi phí thấp: ~150 VND/phút audio
+- Xem hướng dẫn: [VOICE_QUICK_SETUP.md](VOICE_QUICK_SETUP.md)
+
+### 🤖 AI Features
+- 🌍 **Hỗ trợ múi giờ (GMT+7 mặc định cho Việt Nam)**
+- 📱 **Menu tương tác với buttons** (Không cần gõ lệnh!)
 - 💾 Lưu trữ riêng biệt cho từng người dùng
 - 🔔 Tự động gửi thông báo khi đến giờ nhắc
 - ⚡ Quick time select: 5m, 15m, 30m, 1h, 2h, 3h
-- 🚫 Lệnh /cancel để hủy thao tác đang làm
+- 💬 **Natural language task creation** (cần GitHub token)
+- 🎤 **Speech to text transcription** (cần OpenAI key)
 
 ## 📋 Yêu cầu
 
@@ -48,11 +61,20 @@ Tạo file `.env` từ `.env.example`:
 cp .env.example .env
 ```
 
-Mở file `.env` và thay thế `your_bot_token_here` bằng token của bạn:
+Mở file `.env` và cấu hình các tokens:
 
-```
+```env
+# Bắt buộc
 TELEGRAM_BOT_TOKEN=your_actual_bot_token
+
+# Tùy chọn (Optional features)
+GITHUB_TOKEN=your_github_token          # Cho AI natural language
+OPENAI_API_KEY=your_openai_api_key      # Cho voice to text
 ```
+
+**Hướng dẫn setup:**
+- 🤖 AI Natural Language: [AI_SETUP.md](AI_SETUP.md)
+- 🎤 Voice to Text: [VOICE_QUICK_SETUP.md](VOICE_QUICK_SETUP.md)
 
 ### 4. Chạy bot
 
