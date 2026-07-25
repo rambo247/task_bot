@@ -243,9 +243,29 @@ Voice: [Ghi âm bài giảng]
 1. Download voice từ Telegram
 2. Gửi đến OpenAI Whisper API
 3. Nhận text, tạo file txt
-4. Xóa file voice tạm thời
-5. Gửi file txt cho user
+4. **Gửi file txt về PRIVATE CHAT của user** (không gửi vào group)
+5. Xóa file voice tạm thời
 6. Xóa file txt tạm thời
+
+### 🛡️ Privacy Protection
+- ✅ **Transcriptions luôn gửi về private chat**, kể cả khi bạn gửi voice từ group
+- ✅ **Các thành viên khác trong group KHÔNG thấy nội dung** transcription của bạn
+- ✅ Voice files được xóa ngay sau khi xử lý
+- ✅ Txt files được xóa ngay sau khi gửi
+- ✅ Mỗi file có tên unique: `transcription_{user_id}_{timestamp}.txt`
+
+### 📱 Group Chat Behavior
+**Khi gửi voice trong group:**
+1. Bot nhận voice message
+2. Bot hiển thị "🎤 Đang xử lý..." trong group
+3. Bot gửi file txt về **private chat** với bạn 🔒
+4. Bot thông báo trong group: "✅ Đã gửi vào chat riêng với bạn"
+5. **Members khác KHÔNG nhìn thấy nội dung**
+
+**Khi gửi voice trong private chat:**
+1. Bot nhận voice message
+2. Bot xử lý và gửi file txt trực tiếp
+3. Chỉ có bạn nhìn thấy
 
 ### 🔐 Bảo mật
 - ✅ Voice files được xóa sau khi xử lý

@@ -1498,7 +1498,7 @@ def handle_voice_message(message):
             )
             return
         
-        # Tạo file txt
+        # Tạo file txt (riêng tư cho từng user)
         txt_filename = f"transcription_{user_id}_{int(time.time())}.txt"
         with open(txt_filename, 'w', encoding='utf-8') as f:
             f.write("=== CHUYỂN ĐỔI GIỌNG NÓI THÀNH VĂN BẢN ===\n")
@@ -1507,22 +1507,38 @@ def handle_voice_message(message):
             f.write("="*50 + "\n\n")
             f.write(transcribed_text)
         
-        # Gửi file txt
+        # Gửi file txt VỀ PRIVATE CHAT của user (không gửi vào group)
+        # Đảm bảo privacy: mỗi user chỉ nhìn thấy transcription của chính mình
         with open(txt_filename, 'rb') as f:
             bot.send_document(
-                chat_id,
+                user_id,  # Gửi về user_id (private chat), không gửi vào group
                 f,
                 caption=f"📝 **Nội dung văn bản:**\n\n{transcribed_text}\n\n✅ File đã được tạo!",
                 parse_mode='Markdown'
             )
         
-        # Xóa file txt tạm
+        # Nếu voice được gửi từ group, thông báo user check private chat
+        if chat_id != user_id:  # Nếu là group chat
+            # Xóa file txt tạm
+            try:
+                os.remove(txt_filename)
+            except:
+                pass
+            
+            bot.edit_message_text(
+                "✅ Đã chuyển đổi xong! Tôi đã gửi file txt vào chat riêng với bạn để đảm bảo riêng tư. 🔒",
+                chat_id=chat_id,
+                message_id=processing_msg.message_id
+            )
+            return
+        
+        # Xóa file txt tạm (private chat)
         try:
             os.remove(txt_filename)
         except:
             pass
         
-        # Xóa processing message
+        # Xóa processing message (private chat)
         bot.delete_message(chat_id, processing_msg.message_id)
         
     except Exception as e:

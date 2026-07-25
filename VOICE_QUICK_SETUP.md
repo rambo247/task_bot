@@ -67,11 +67,28 @@ screen -dmS taskbot python3 task_bot.py
 
 ## 🎯 Cách dùng
 
+### Private Chat:
 1. **Giữ icon micro** trong Telegram
 2. **Nói** nội dung (tiếng Việt hoặc English)
 3. **Thả tay** để gửi
 4. **Đợi 2-8 giây**
 5. **Nhận file .txt** ✅
+
+### Group Chat (Riêng tư 🔒):
+1. **Gửi voice message** trong group
+2. Bot hiển thị "Đang xử lý..." trong group
+3. **File .txt được gửi về PRIVATE CHAT** với bạn
+4. **Members khác KHÔNG nhìn thấy** nội dung
+5. Bot thông báo trong group: "Đã gửi vào chat riêng" ✅
+
+---
+
+## 🛡️ Privacy
+
+**✅ Đảm bảo riêng tư:**
+- Transcriptions luôn gửi về private chat
+- Members trong group không thấy nội dung của nhau
+- Mỗi user chỉ nhìn thấy transcription của chính mình
 
 ---
 
