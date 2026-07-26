@@ -237,7 +237,28 @@ def reminder_checker():
                                 reminder_text = f"⏰ NHẮC NHỞ!\n\n📌 {task['content']}"
                                 if task.get('done'):
                                     reminder_text += "\n\n✅ (Đã hoàn thành)"
-                                bot.send_message(chat_id, reminder_text)
+                                
+                                # Tạo inline keyboard với các nút menu
+                                markup = types.InlineKeyboardMarkup(row_width=2)
+                                
+                                # Tìm index của task để tạo callback
+                                task_idx = user_tasks[user_id].index(task)
+                                
+                                # Nếu task chưa hoàn thành, thêm nút Done
+                                if not task.get('done'):
+                                    btn_done = types.InlineKeyboardButton("✅ Hoàn thành", callback_data=f"task_done_{task_idx}")
+                                    btn_snooze = types.InlineKeyboardButton("💤 Hoãn 15 phút", callback_data=f"reminder_snooze_{task_idx}_15")
+                                    markup.add(btn_done, btn_snooze)
+                                
+                                # Các nút chung
+                                btn_list = types.InlineKeyboardButton("📋 Xem tất cả", callback_data="menu_list")
+                                btn_add = types.InlineKeyboardButton("➕ Thêm task", callback_data="menu_add")
+                                markup.add(btn_list, btn_add)
+                                
+                                btn_menu = types.InlineKeyboardButton("🏠 Menu Chính", callback_data="menu_main")
+                                markup.add(btn_menu)
+                                
+                                bot.send_message(chat_id, reminder_text, reply_markup=markup)
                                 task['reminded'] = True
                                 print(f"Reminder sent successfully to user_id {user_id}")
                             except Exception as e:
@@ -1554,6 +1575,51 @@ def callback_handler(call):
             reply_markup=markup
         )
         bot.answer_callback_query(call.id)
+    
+    # Snooze reminder (hoãn nhắc nhở)
+    elif call.data.startswith("reminder_snooze_"):
+        parts = call.data.split("_")
+        task_idx = int(parts[2])
+        snooze_minutes = int(parts[3])
+        
+        if user_id in user_tasks and 0 <= task_idx < len(user_tasks[user_id]):
+            task = user_tasks[user_id][task_idx]
+            
+            # Cập nhật remind_time thêm X phút
+            if task.get('remind_time'):
+                task['remind_time'] = task['remind_time'] + timedelta(minutes=snooze_minutes)
+                task['reminded'] = False  # Cho phép nhắc lại
+                
+                remind_local = get_user_time(user_id, task['remind_time'])
+                remind_str = remind_local.strftime("%H:%M")
+                
+                markup = types.InlineKeyboardMarkup()
+                btn_list = types.InlineKeyboardButton("📋 Xem tất cả", callback_data="menu_list")
+                btn_menu = types.InlineKeyboardButton("🏠 Menu Chính", callback_data="menu_main")
+                markup.add(btn_list, btn_menu)
+                
+                try:
+                    bot.edit_message_text(
+                        f"💤 Đã hoãn nhắc nhở!\n\n"
+                        f"📌 {task['content']}\n"
+                        f"⏰ Sẽ nhắc lại lúc: {remind_str}",
+                        chat_id=chat_id,
+                        message_id=call.message.message_id,
+                        reply_markup=markup
+                    )
+                except:
+                    bot.send_message(
+                        chat_id,
+                        f"💤 Đã hoãn nhắc nhở!\n\n"
+                        f"📌 {task['content']}\n"
+                        f"⏰ Sẽ nhắc lại lúc: {remind_str}",
+                        reply_markup=markup
+                    )
+                bot.answer_callback_query(call.id, f"✅ Hoãn {snooze_minutes} phút!")
+            else:
+                bot.answer_callback_query(call.id, "❌ Task không có reminder!")
+        else:
+            bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
 
 def show_task_list(user_id, chat_id, message_id=None):
     """Hiển thị danh sách task với các nút action"""
