@@ -3874,16 +3874,20 @@ def handle_user_input(message):
     elif state == "waiting_import_url":
         org_id = get_active_org(user_id)
         if not org_id:
-            bot.reply_to(message, "⚠️ Lỗi: Không tìm thấy organization!")
+            markup = types.InlineKeyboardMarkup()
+            btn_back = types.InlineKeyboardButton("🔙 Menu", callback_data="category_enterprise")
+            markup.add(btn_back)
+            bot.reply_to(message, "⚠️ Lỗi: Không tìm thấy organization!", reply_markup=markup)
             return
         
         url = message.text.strip()
         
         # Validate URL
         if not url.startswith('http'):
-            markup = types.InlineKeyboardMarkup()
+            markup = types.InlineKeyboardMarkup(row_width=2)
+            btn_retry = types.InlineKeyboardButton("🔄 Thử lại", callback_data="import_web")
             btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="org_import")
-            markup.add(btn_cancel)
+            markup.add(btn_retry, btn_cancel)
             bot.reply_to(message, "⚠️ URL không hợp lệ! Nhập lại:\n\n💡 Gõ /cancel để hủy", reply_markup=markup)
             return
         
@@ -3947,10 +3951,13 @@ def handle_user_input(message):
             'org_id': org_id
         }
         
-        markup = types.InlineKeyboardMarkup()
+        markup = types.InlineKeyboardMarkup(row_width=2)
         btn_yes = types.InlineKeyboardButton("✅ Có, thêm nguồn web", callback_data="scrape_confirm_yes")
         btn_no = types.InlineKeyboardButton("❌ Không, hủy bỏ", callback_data="scrape_confirm_no")
         markup.add(btn_yes, btn_no)
+        
+        btn_back = types.InlineKeyboardButton("🔙 Menu Import", callback_data="org_import")
+        markup.add(btn_back)
         
         try:
             bot.edit_message_text(
