@@ -1730,10 +1730,11 @@ def format_contact_info(contact):
 def get_enhanced_ai_response(user_id, user_message, org_id=None):
     """Enhanced AI response with department & contact search"""
     
-    # 1. Tìm trong knowledge base
-    kb_answer = search_knowledge_base(user_id, user_message)
-    if kb_answer:
-        return f"📚 {kb_answer}\n\n_[Từ dữ liệu đã học]_"
+    # 1. Tìm trong knowledge base VÀ web sources (passive learning)
+    # Gọi get_ai_response() đã có logic đầy đủ cho KB cache + web sources on-demand
+    ai_answer = get_ai_response(user_id, user_message)
+    if ai_answer:
+        return ai_answer
     
     # 2. Tìm department nếu có org
     if org_id:
