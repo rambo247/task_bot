@@ -2,6 +2,55 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi lại ở đây.
 
+## [2.2.1] - 2026-08-01 🐛 BUG FIX: AI Chat Web Sources
+
+### 🔧 Critical Bug Fix
+
+#### 🐛 Issue
+- **AI Chat mode không xử lý web sources**
+- User thêm web source ✅
+- User hỏi câu hỏi ❌ Không trả lời
+- Passive learning không hoạt động
+
+#### 🔍 Root Cause
+Function `get_enhanced_ai_response()`:
+- Chỉ tìm KB cache (`search_knowledge_base()`)
+- KHÔNG tìm web sources (passive learning)
+- Bỏ qua logic on-demand extraction
+- Duplicate logic thay vì gọi `get_ai_response()`
+
+#### ✅ Fix
+```python
+# BEFORE (BUG):
+kb_answer = search_knowledge_base(user_id, user_message)  # Only KB cache
+if kb_answer:
+    return f"📚 {kb_answer}\n\n_[Từ dữ liệu đã học]_"
+
+# AFTER (FIXED):
+ai_answer = get_ai_response(user_id, user_message)  # Full logic: KB + web sources
+if ai_answer:
+    return ai_answer
+```
+
+#### 📊 Impact
+- ✅ Web sources hoạt động 100% trong AI Chat
+- ✅ Passive learning extract on-demand
+- ✅ Enterprise features hoạt động đầy đủ
+- ✅ Smart caching vào KB
+
+#### 🚀 Deployment
+- Commit: `ad178c5`
+- Deployed: 2026-08-01 16:58
+- Status: ✅ FIXED & TESTED
+
+### 📝 Documentation
+- New file: `BUGFIX_AI_CHAT_v2.2.1.md`
+- Root cause analysis
+- Test cases
+- Flow diagrams
+
+---
+
 ## [2.2.0] - 2026-08-01 🔄 PASSIVE LEARNING ARCHITECTURE
 
 ### 🎯 Major Architectural Change: Active → Passive Learning
