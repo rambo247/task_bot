@@ -1,6 +1,21 @@
-# 🤖 Telegram Task Bot
+# 🤖 Telegram Task Bot v2.1.0 Enterprise
 
-Bot Telegram quản lý công việc đơn giản và tiện lợi, giúp bạn theo dõi các task hàng ngày.
+Bot Telegram đa chức năng với **AI thông minh**, quản lý công việc, và **tự học từ web**.
+
+## 🌟 Tính năng nổi bật v2.1.0
+
+### 🧠 **AI Smart Web Scraping & Knowledge Management** (MỚI!)
+- 🤖 **AI tự học thông minh từ website**
+- 📊 **5 phương pháp trích xuất**: FAQ, Headings, Meta, Direct Q&A
+- 💾 **Lưu JSON với metadata đầy đủ** (source, URL, confidence)
+- 🎯 **AI suy luận & trích dẫn nguồn** khi trả lời
+- 📈 **Usage analytics** tracking
+- ✅ **Up to 100 Q&A per page**
+
+👉 **Xem hướng dẫn đầy đủ:** [AI_SMART_SCRAPING_GUIDE.md](AI_SMART_SCRAPING_GUIDE.md)  
+👉 **Summary hoàn thành:** [AI_UPGRADE_COMPLETE.md](AI_UPGRADE_COMPLETE.md)
+
+---
 
 ## ✨ Tính năng
 
@@ -32,8 +47,18 @@ Bot được thiết kế như một **trợ lý đa chức năng** với menu p
 - 💬 **Natural language task creation** (cần GitHub token)
 - AI tự động phân tích thời gian và tạo reminder
 - 🎤 **Speech to text transcription** (cần OpenAI key)
-- 📊 Smart task analysis (coming soon)
-- 🔮 AI suggestions (coming soon)
+- 🧠 **Smart KB search** với source attribution
+- 🎯 **AI reasoning** từ knowledge base
+
+#### 🏢 Enterprise Features (v2.1.0)
+- 🏢 **Multi-tenant Organizations** (CRUD operations)
+- 🏛️ **Department Management** với AI auto-search
+- 👥 **Contact Directory** với skills-based search
+- 📥 **Bulk Import** (Q&A, Departments, Contacts)
+- 🌐 **Smart Web Scraping** (FAQ, headings, meta extraction)
+- 📊 **Usage Analytics** & tracking
+- 💾 **JSON Persistence** với auto-backup
+- 🔍 **Preview & Confirmation** flow
 
 #### ⚙️ Settings & Features
 - 🌍 **Hỗ trợ múi giờ (GMT+7 mặc định cho Việt Nam)**
@@ -46,8 +71,15 @@ Bot được thiết kế như một **trợ lý đa chức năng** với menu p
 
 ## 📋 Yêu cầu
 
-- Python 3.7 trở lên
+- Python 3.6 trở lên (Production server: Python 3.6)
 - Telegram Bot Token (lấy từ [@BotFather](https://t.me/BotFather))
+
+### Optional Dependencies:
+- **BeautifulSoup4** (cho web scraping features)
+- **lxml** (cho HTML parsing)
+- **validators** (cho URL validation)
+- **GitHub Token** (cho AI features)
+- **OpenAI API Key** (cho voice to text)
 
 ## 🚀 Cài đặt
 
