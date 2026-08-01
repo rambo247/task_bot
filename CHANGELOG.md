@@ -2,6 +2,58 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi lại ở đây.
 
+## [2.2.2] - 2026-08-02 🔧 UX FIX: Web Source Flow Clarity
+
+### 🎯 User Experience Improvements
+
+#### 🐛 Issue Reported
+User báo: "Sau khi nhập nguồn web thì bot lại phản hồi nhập câu trả lời"
+- ❌ Text button "thêm vào KB" không phù hợp Menu Doanh Nghiệp
+- ❌ Success message không rõ ràng về cách sử dụng
+- ❌ User gửi câu hỏi ngay mà chưa bật AI Chat mode
+- ❌ State handler thiếu cho "confirm_scrape_data"
+
+#### ✅ Fixes Applied
+
+1. **Button Text Chính Xác**
+   - OLD: "✅ Có, thêm vào KB"
+   - NEW: "✅ Có, thêm nguồn web"
+
+2. **Clear 4-Step Guide**
+   - OLD: "Hãy chat với AI và hỏi câu hỏi"
+   - NEW: Step-by-step guide:
+     1. Click "💬 Chat với AI"
+     2. Click "⚡ Bật/Tắt AI Chat"
+     3. Gửi câu hỏi
+     4. AI sẽ tự động tìm và trả lời
+
+3. **State Handler Added**
+   - NEW: Handler cho state "confirm_scrape_data||{url}"
+   - Nhắc user click button nếu gửi text
+   - Không yêu cầu "nhập câu trả lời"
+
+4. **Consistent Terminology**
+   - OLD: "Knowledge Base" trong Menu Doanh Nghiệp
+   - NEW: "doanh nghiệp", "nguồn web"
+
+#### 📊 Impact
+- ✅ User không bị confused
+- ✅ Text chính xác cho từng context
+- ✅ Hướng dẫn rõ ràng 4 bước
+- ✅ Complete state handling
+
+#### 🚀 Deployment
+- Commit: `1006e05`
+- Status: ✅ DEPLOYED
+
+### 📝 Documentation
+- New file: `FIX_WEB_SOURCE_CLARITY_v2.2.2.md`
+- Root cause analysis
+- Before/After comparison
+- Test cases
+
+---
+
 ## [2.2.1] - 2026-08-01 🐛 BUG FIX: AI Chat Web Sources
 
 ### 🔧 Critical Bug Fix
