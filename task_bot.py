@@ -1122,8 +1122,8 @@ def add_to_knowledge_base(user_id, question, answer, source='manual', metadata=N
     return True
 
 def get_ai_response(user_id, user_message):
-    """Lấy câu trả lời AI (từ knowledge base hoặc AI) với nguồn tham chiếu"""
-    # 1. Tìm trong knowledge base trước
+    """Lấy câu trả lời AI - HỌC BỊ ĐỘNG (on-demand từ web sources)"""
+    # 1. Tìm trong knowledge base trước (cache)
     kb_result = search_knowledge_base(user_id, user_message)
     if kb_result:
         answer = kb_result['answer']
@@ -1139,7 +1139,7 @@ def get_ai_response(user_id, user_message):
             source_url = kb_result['source_url']
             response += f"🔗 Nguồn: [{source_title[:50]}]({source_url})\n"
         elif source.startswith('web_'):
-            response += f"🌐 Nguồn: Web scraping\n"
+            response += f"🌐 Nguồn: Web source\n"
         elif source == 'text_import':
             response += f"📋 Nguồn: Import text\n"
         elif source == 'manual':
@@ -1151,39 +1151,119 @@ def get_ai_response(user_id, user_message):
         elif confidence >= 0.6:
             response += f"⚡ Độ chính xác: Trung bình\n"
         
-        response += "\n_[Từ dữ liệu đã học]_"
+        response += "\n_[Từ KB cache]_"
         return response
     
-    # 2. Sử dụng AI nếu có GitHub token
+    # 2. ON-DEMAND: Tìm trong web sources (HỌC BỊ ĐỘNG)
+    org_id = get_active_org(user_id)
+    if org_id and org_id in web_sources:
+        sources_list = web_sources[org_id]
+        
+        # Try to extract answer from web sources on-demand
+        for source in sources_list:
+            if source.get('raw_content'):
+                # Extract answer from cached raw content
+                result = extract_answer_from_source(source, user_message)
+                
+                if result and result.get('answer'):
+                    answer = result['answer']
+                    confidence = result.get('confidence', 0.5)
+                    
+                    # Cache to KB for next time
+                    add_to_knowledge_base(
+                        user_id,
+                        user_message,
+                        answer,
+                        source='web_on_demand',
+                        metadata={
+                            'url': result.get('source_url'),
+                            'title': result.get('source_title'),
+                            'extracted_on_demand': True
+                        }
+                    )
+                    
+                    # Build response
+                    response = f"📚 {answer}\n\n"
+                    response += f"🔗 Nguồn: [{result.get('source_title', 'Web Source')[:50]}]({result['source_url']})\n"
+                    
+                    if confidence >= 0.8:
+                        response += f"✅ Độ tin cậy: Cao\n"
+                    elif confidence >= 0.5:
+                        response += f"⚡ Độ tin cậy: Trung bình\n"
+                    
+                    response += "\n_[Trích xuất từ web source]_"
+                    return response
+            
+            elif source.get('url'):
+                # Need to scrape on-demand if no cached content
+                try:
+                    data, error = scrape_website(source['url'])
+                    if data and not error:
+                        # Cache raw content
+                        source['raw_content'] = data.get('raw_content')
+                        source['title'] = data.get('title')
+                        source['description'] = data.get('description')
+                        save_data()
+                        
+                        # Extract answer
+                        result = extract_answer_from_source(data, user_message)
+                        
+                        if result and result.get('answer'):
+                            answer = result['answer']
+                            confidence = result.get('confidence', 0.5)
+                            
+                            # Cache to KB
+                            add_to_knowledge_base(
+                                user_id,
+                                user_message,
+                                answer,
+                                source='web_on_demand',
+                                metadata={
+                                    'url': result.get('source_url'),
+                                    'title': result.get('source_title'),
+                                    'extracted_on_demand': True
+                                }
+                            )
+                            
+                            # Build response
+                            response = f"📚 {answer}\n\n"
+                            response += f"🔗 Nguồn: [{result.get('source_title', 'Web Source')[:50]}]({result['source_url']})\n"
+                            
+                            if confidence >= 0.8:
+                                response += f"✅ Độ tin cậy: Cao\n"
+                            elif confidence >= 0.5:
+                                response += f"⚡ Độ tin cậy: Trung bình\n"
+                            
+                            response += "\n_[Trích xuất on-demand từ web]_"
+                            return response
+                except Exception as e:
+                    print(f"Error scraping on-demand: {e}")
+                    continue
+    
+    # 3. Sử dụng AI reasoning nếu có GitHub token
     if GITHUB_TOKEN:
-        # Lấy context từ knowledge base để AI hiểu rõ hơn và suy luận
+        # Lấy context từ knowledge base
         context = ""
         if user_id in ai_knowledge_base and ai_knowledge_base[user_id]:
-            # Get relevant context (recent + high usage)
             kb_items = ai_knowledge_base[user_id]
-            
-            # Sort by relevance: recent + high usage
             sorted_items = sorted(
                 kb_items,
                 key=lambda x: (x.get('usage_count', 0) * 10 + (1 if x.get('last_used') else 0)),
                 reverse=True
             )[:5]
             
-            context = "Kiến thức có sẵn (sử dụng để suy luận nếu liên quan):\n"
+            context = "Kiến thức có sẵn:\n"
             for item in sorted_items:
                 context += f"- Q: {item['question']}\n"
                 context += f"  A: {item['answer']}\n"
                 if item.get('source_url'):
                     context += f"  URL: {item['source_url']}\n"
         
-        system_prompt = f"""Bạn là trợ lý thông minh, hữu ích và thân thiện.
+        system_prompt = f"""Bạn là trợ lý thông minh.
 {context}
 
-QUAN TRỌNG:
-- Nếu câu hỏi liên quan đến kiến thức có sẵn ở trên, hãy SỬ DỤNG và SUY LUẬN từ đó
-- Trích dẫn nguồn nếu sử dụng kiến thức từ trên
-- Trả lời ngắn gọn, súc tích bằng tiếng Việt
-- Nếu không chắc chắn, nói rõ là đang suy luận"""
+Sử dụng kiến thức trên để suy luận nếu liên quan.
+Trả lời ngắn gọn bằng tiếng Việt."""
         
         ai_response = call_github_ai(user_message, system_prompt)
         if ai_response:
@@ -1436,7 +1516,7 @@ def search_contact(org_id, query):
     return [contact for score, contact in results[:5]]  # Top 5 results
 
 def scrape_website(url):
-    """Scrape nội dung từ website và trích xuất Q&A thông minh"""
+    """Scrape nội dung từ website - CHỈ LẤY RAW CONTENT (không extract Q&A)"""
     if not ENTERPRISE_ENABLED:
         return None, "Enterprise features not enabled. Install: pip install beautifulsoup4"
     
@@ -1457,139 +1537,21 @@ def scrape_website(url):
         for tag in soup(['script', 'style', 'meta', 'link', 'noscript']):
             tag.decompose()
         
-        # Extract structured data
-        qa_pairs = []
-        
-        # ===== 1. EXTRACT FROM FAQ SECTIONS =====
-        faq_sections = soup.find_all(['div', 'section'], class_=lambda x: x and ('faq' in x.lower() if isinstance(x, str) else False))
-        for faq in faq_sections:
-            questions = faq.find_all(['h3', 'h4', 'h5', 'dt', 'strong'])
-            for q_tag in questions:
-                question = q_tag.get_text(strip=True)
-                if '?' in question or any(kw in question.lower() for kw in ['gì', 'nào', 'sao', 'thế nào', 'ai', 'đâu', 'when', 'what', 'how', 'why', 'where']):
-                    # Find answer (next sibling or parent's next sibling)
-                    answer_tag = q_tag.find_next_sibling(['p', 'dd', 'div'])
-                    if not answer_tag:
-                        answer_tag = q_tag.parent.find_next_sibling(['p', 'div'])
-                    
-                    if answer_tag:
-                        answer = answer_tag.get_text(strip=True)
-                        if len(answer) > 10 and len(answer) < 1000:
-                            qa_pairs.append({
-                                'question': question,
-                                'answer': answer,
-                                'source': 'faq'
-                            })
-        
-        # ===== 2. EXTRACT FROM HEADINGS + CONTENT =====
-        for heading_tag in soup.find_all(['h1', 'h2', 'h3', 'h4']):
-            heading = heading_tag.get_text(strip=True)
-            
-            # Skip if too short or too long
-            if len(heading) < 5 or len(heading) > 200:
-                continue
-            
-            # Get content after heading (paragraphs, lists)
-            content_parts = []
-            next_elem = heading_tag.find_next_sibling()
-            
-            while next_elem and next_elem.name not in ['h1', 'h2', 'h3', 'h4']:
-                if next_elem.name in ['p', 'div', 'span']:
-                    text = next_elem.get_text(strip=True)
-                    if text:
-                        content_parts.append(text)
-                elif next_elem.name in ['ul', 'ol']:
-                    items = [li.get_text(strip=True) for li in next_elem.find_all('li')]
-                    content_parts.append('. '.join(items))
-                
-                next_elem = next_elem.find_next_sibling()
-                
-                # Limit content length
-                if len(content_parts) >= 3:
-                    break
-            
-            if content_parts:
-                content = ' '.join(content_parts)[:800]
-                
-                # Create Q&A from heading
-                # If heading is already a question
-                if '?' in heading:
-                    qa_pairs.append({
-                        'question': heading,
-                        'answer': content,
-                        'source': 'heading'
-                    })
-                else:
-                    # Convert heading to question
-                    if any(kw in heading.lower() for kw in ['về', 'giới thiệu', 'about', 'overview']):
-                        question = f"Giới thiệu về {heading}?"
-                    elif any(kw in heading.lower() for kw in ['lợi ích', 'ưu điểm', 'benefits']):
-                        question = f"Lợi ích của {heading} là gì?"
-                    elif any(kw in heading.lower() for kw in ['tính năng', 'chức năng', 'features']):
-                        question = f"Tính năng của {heading} là gì?"
-                    elif any(kw in heading.lower() for kw in ['cách', 'how to']):
-                        question = heading if not heading.endswith('?') else heading
-                    elif any(kw in heading.lower() for kw in ['liên hệ', 'contact']):
-                        question = f"Thông tin liên hệ {heading}?"
-                    elif any(kw in heading.lower() for kw in ['giá', 'price', 'cost']):
-                        question = f"Giá {heading} là bao nhiêu?"
-                    else:
-                        question = f"{heading} là gì?"
-                    
-                    qa_pairs.append({
-                        'question': question,
-                        'answer': content,
-                        'source': 'heading_content'
-                    })
-        
-        # ===== 3. EXTRACT FROM META DESCRIPTION =====
-        meta_desc = soup.find('meta', attrs={'name': 'description'})
-        if meta_desc and meta_desc.get('content'):
-            desc = meta_desc.get('content')
-            title = soup.title.string if soup.title else ''
-            if title and desc:
-                qa_pairs.append({
-                    'question': f"{title} là gì?",
-                    'answer': desc,
-                    'source': 'meta'
-                })
-        
-        # ===== 4. EXTRACT DIRECT Q&A PATTERNS =====
+        # Get raw text content
         text = soup.get_text(separator='\n', strip=True)
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
         
-        for i, line in enumerate(lines):
-            # Look for lines ending with '?' as questions
-            if line.endswith('?') and len(line) > 10 and len(line) < 200:
-                # Check if already added
-                if any(qa['question'] == line for qa in qa_pairs):
-                    continue
-                
-                question = line
-                # Next line might be answer
-                if i + 1 < len(lines):
-                    answer = lines[i + 1]
-                    if len(answer) > 10 and len(answer) < 800:
-                        qa_pairs.append({
-                            'question': question,
-                            'answer': answer,
-                            'source': 'direct_qa'
-                        })
+        # Get metadata
+        title = soup.title.string if soup.title else 'Untitled'
+        meta_desc = soup.find('meta', attrs={'name': 'description'})
+        description = meta_desc.get('content') if meta_desc else ''
         
-        # ===== 5. DEDUPLICATE =====
-        seen_questions = set()
-        unique_qa = []
-        for qa in qa_pairs:
-            q_normalized = qa['question'].lower().strip()
-            if q_normalized not in seen_questions:
-                seen_questions.add(q_normalized)
-                unique_qa.append(qa)
-        
+        # Return raw data (NO Q&A extraction)
         return {
-            'text': text[:5000] if text else '',
-            'qa_pairs': unique_qa[:100],  # Limit to 100 pairs
-            'title': soup.title.string if soup.title else 'Untitled',
             'url': url,
+            'title': title,
+            'description': description,
+            'raw_content': text[:50000],  # Limit to 50KB
+            'content_length': len(text),
             'scraped_at': datetime.utcnow().isoformat(),
             'status': 'success'
         }, None
@@ -1598,6 +1560,63 @@ def scrape_website(url):
         return None, f"Lỗi khi tải trang: {str(e)[:100]}"
     except Exception as e:
         return None, f"Lỗi: {str(e)[:100]}"
+
+def extract_answer_from_source(source_data, question):
+    """Trích xuất câu trả lời từ nguồn dữ liệu khi có câu hỏi (ON-DEMAND)"""
+    if not source_data or 'raw_content' not in source_data:
+        return None
+    
+    try:
+        raw_content = source_data['raw_content']
+        question_lower = question.lower()
+        keywords = extract_keywords(question)
+        
+        # Split content into paragraphs
+        paragraphs = [p.strip() for p in raw_content.split('\n') if len(p.strip()) > 20]
+        
+        # Find relevant paragraphs
+        relevant_paras = []
+        for para in paragraphs:
+            para_lower = para.lower()
+            score = 0
+            
+            # Check if question appears in paragraph
+            if question_lower in para_lower:
+                score += 10
+            
+            # Check keywords
+            for kw in keywords:
+                if kw in para_lower:
+                    score += 1
+            
+            if score > 0:
+                relevant_paras.append((score, para))
+        
+        # Sort by relevance
+        relevant_paras.sort(key=lambda x: x[0], reverse=True)
+        
+        # Get top 3 most relevant paragraphs
+        if relevant_paras:
+            answer_parts = [para for score, para in relevant_paras[:3]]
+            answer = '\n\n'.join(answer_parts)
+            
+            # Limit answer length
+            if len(answer) > 1000:
+                answer = answer[:1000] + '...'
+            
+            return {
+                'answer': answer,
+                'source_url': source_data.get('url'),
+                'source_title': source_data.get('title'),
+                'confidence': min(relevant_paras[0][0] / 10, 1.0),  # Normalize score
+                'extracted_at': datetime.utcnow().isoformat()
+            }
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error extracting answer: {e}")
+        return None
 
 def import_from_text(text_data, org_id=None):
     """Import dữ liệu từ text (format: question | answer)"""
@@ -2197,22 +2216,27 @@ def callback_handler(call):
             return
         
         web_list = web_sources.get(org_id, [])
-        text = f"🌐 **NGUỒN WEB**\n\n"
+        text = f"🌐 **NGUỒN WEB (HỌC BỊ ĐỘNG)**\n\n"
         text += f"📊 Tổng số: {len(web_list)} nguồn\n\n"
         
         if web_list:
             text += "📋 Danh sách:\n"
             for i, source in enumerate(web_list, 1):
-                text += f"{i}. {source.get('url', 'N/A')}\n"
-                text += f"   📅 {source.get('last_scraped', 'Chưa scrape')}\n"
-                text += f"   📊 {source.get('items_count', 0)} items\n\n"
+                source_type = source.get('type', 'N/A')
+                text += f"{i}. {source.get('url', 'N/A')[:50]}\n"
+                text += f"   📄 {source.get('title', 'N/A')[:40]}\n"
+                text += f"   📅 {source.get('added_at', 'N/A')[:10]}\n"
+                text += f"   📊 {source.get('content_length', 0):,} ký tự\n\n"
         else:
-            text += "💡 Chưa scrape website nào.\n\n"
+            text += "💡 Chưa thêm nguồn web nào.\n\n"
         
-        text += "🎯 Scrape website để tự động học Q&A!"
+        text += "🤖 **Học bị động:**\n"
+        text += "   • AI chưa extract Q&A ngay\n"
+        text += "   • Chỉ extract khi bạn hỏi\n"
+        text += "   • Tiết kiệm bộ nhớ và nhanh hơn!"
         
         markup = types.InlineKeyboardMarkup(row_width=1)
-        btn_add = types.InlineKeyboardButton("➕ Scrape Website Mới", callback_data="import_web")
+        btn_add = types.InlineKeyboardButton("➕ Thêm Nguồn Web", callback_data="import_web")
         markup.add(btn_add)
         
         btn_back = types.InlineKeyboardButton("🔙 Menu Doanh Nghiệp", callback_data="category_enterprise")
@@ -2303,14 +2327,15 @@ def callback_handler(call):
         
         user_states[user_id] = "waiting_import_url"
         bot.edit_message_text(
-            "🌐 **SCRAPE WEBSITE**\n\n"
+            "🌐 **THÊM NGUỒN WEB (HỌC BỊ ĐỘNG)**\n\n"
             "✍️ Nhập URL website:\n\n"
             "(Ví dụ: https://company.com/about)\n\n"
-            "AI sẽ tự động:\n"
-            "   • Tải nội dung trang\n"
-            "   • Trích xuất Q&A\n"
-            "   • Lưu vào KB\n\n"
-            "💡 Gõ /cancel để hủy",
+            "🤖 AI sẽ:\n"
+            "   ✅ Tải và lưu nội dung trang\n"
+            "   ✅ KHÔNG trích xuất Q&A ngay\n"
+            "   ✅ Chỉ extract khi bạn hỏi\n\n"
+            "💡 Học bị động = Tiết kiệm bộ nhớ!\n\n"
+            "Gõ /cancel để hủy",
             chat_id=chat_id,
             message_id=call.message.message_id,
             reply_markup=markup,
@@ -2318,7 +2343,7 @@ def callback_handler(call):
         )
         bot.answer_callback_query(call.id)
     
-    # Scrape Confirmation - YES
+    # Scrape Confirmation - YES (HỌC BỊ ĐỘNG)
     elif call.data == "scrape_confirm_yes":
         # Retrieve temporary scraped data
         if not hasattr(user_states, '_temp_scraped_data') or user_id not in user_states._temp_scraped_data:
@@ -2330,35 +2355,7 @@ def callback_handler(call):
         data = temp_data['data']
         org_id = temp_data['org_id']
         
-        # Add Q&A to KB with rich metadata
-        qa_count = 0
-        source_breakdown = {'faq': 0, 'heading': 0, 'heading_content': 0, 'meta': 0, 'direct_qa': 0}
-        
-        for qa in data.get('qa_pairs', []):
-            # Prepare metadata for each Q&A
-            metadata = {
-                'url': url,
-                'title': data.get('title', 'Untitled'),
-                'source': qa.get('source', 'web'),
-                'scraped_at': data.get('scraped_at', datetime.utcnow().isoformat())
-            }
-            
-            # Add with metadata
-            add_to_knowledge_base(
-                user_id, 
-                qa['question'], 
-                qa['answer'],
-                source=f"web_{qa.get('source', 'unknown')}",
-                metadata=metadata
-            )
-            qa_count += 1
-            
-            # Track source breakdown
-            source_type = qa.get('source', 'unknown')
-            if source_type in source_breakdown:
-                source_breakdown[source_type] += 1
-        
-        # Save web source with detailed stats
+        # LƯU NGUỒN WEB (không extract Q&A ngay)
         if org_id not in web_sources:
             web_sources[org_id] = []
         
@@ -2366,12 +2363,13 @@ def callback_handler(call):
             'id': generate_id('source'),
             'url': url,
             'title': data.get('title', 'Untitled'),
-            'type': 'scraped',
-            'last_scraped': datetime.utcnow().isoformat(),
-            'status': 'success',
-            'items_count': qa_count,
-            'source_breakdown': source_breakdown,  # Track where Q&As came from
-            'scraped_by': user_id
+            'description': data.get('description', ''),
+            'raw_content': data.get('raw_content', ''),  # Lưu raw content
+            'content_length': data.get('content_length', 0),
+            'type': 'web_passive',  # Học bị động
+            'added_at': datetime.utcnow().isoformat(),
+            'status': 'ready',
+            'added_by': user_id
         })
         save_data()
         
@@ -2379,30 +2377,24 @@ def callback_handler(call):
         del user_states._temp_scraped_data[user_id]
         user_states[user_id] = None
         
-        # Build detailed result text
-        result_text = f"✅ **ĐÃ LƯU VÀO KNOWLEDGE BASE**\n\n"
+        # Success message
+        result_text = f"✅ **ĐÃ THÊM NGUỒN WEB (HỌC BỊ ĐỘNG)**\n\n"
         result_text += f"🌐 URL: {url[:60]}\n"
         result_text += f"📄 Title: {data.get('title', 'N/A')[:60]}\n"
-        result_text += f"📚 Đã học: {qa_count} cặp Q&A\n\n"
+        result_text += f"📊 Nội dung: {data.get('content_length', 0):,} ký tự\n\n"
         
-        # Show source breakdown
-        if any(source_breakdown.values()):
-            result_text += "📊 Nguồn dữ liệu:\n"
-            if source_breakdown['faq'] > 0:
-                result_text += f"   • FAQ: {source_breakdown['faq']}\n"
-            if source_breakdown['heading_content'] > 0:
-                result_text += f"   • Headings: {source_breakdown['heading_content']}\n"
-            if source_breakdown['direct_qa'] > 0:
-                result_text += f"   • Q&A trực tiếp: {source_breakdown['direct_qa']}\n"
-            if source_breakdown['meta'] > 0:
-                result_text += f"   • Meta data: {source_breakdown['meta']}\n"
-            result_text += "\n"
+        result_text += f"🤖 **Học bị động:**\n"
+        result_text += f"   ✅ Nguồn đã sẵn sàng\n"
+        result_text += f"   ✅ AI sẽ tìm khi bạn hỏi\n"
+        result_text += f"   ✅ Trích xuất on-demand\n\n"
         
-        result_text += f"💡 AI có thể trả lời và suy luận từ dữ liệu này!"
+        result_text += f"💡 Bây giờ hãy chat với AI và hỏi câu hỏi liên quan đến nguồn này!"
         
         markup = types.InlineKeyboardMarkup()
-        btn_more = types.InlineKeyboardButton("🌐 Scrape URL Khác", callback_data="import_web")
-        btn_menu = types.InlineKeyboardButton("🏠 Menu Doanh Nghiệp", callback_data="category_enterprise")
+        btn_chat = types.InlineKeyboardButton("💬 Chat với AI", callback_data="category_ai")
+        btn_more = types.InlineKeyboardButton("🌐 Thêm nguồn khác", callback_data="import_web")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu", callback_data="category_enterprise")
+        markup.add(btn_chat)
         markup.add(btn_more, btn_menu)
         
         bot.edit_message_text(
@@ -2412,7 +2404,7 @@ def callback_handler(call):
             reply_markup=markup,
             parse_mode='Markdown'
         )
-        bot.answer_callback_query(call.id, "✅ Đã lưu vào KB!")
+        bot.answer_callback_query(call.id, "✅ Đã thêm nguồn web!")
     
     # Scrape Confirmation - NO
     elif call.data == "scrape_confirm_no":
@@ -3874,9 +3866,9 @@ def handle_user_input(message):
             return
         
         # Processing message
-        processing_msg = bot.reply_to(message, "🌐 Đang tải và phân tích website...")
+        processing_msg = bot.reply_to(message, "🌐 Đang tải và kiểm tra website...")
         
-        # Scrape
+        # Scrape (CHỈ LẤY RAW CONTENT - KHÔNG EXTRACT Q&A)
         data, error = scrape_website(url)
         
         if error:
@@ -3887,7 +3879,7 @@ def handle_user_input(message):
             
             try:
                 bot.edit_message_text(
-                    f"❌ Lỗi khi scrape:\n\n{error}\n\n"
+                    f"❌ Lỗi khi tải:\n\n{error}\n\n"
                     f"💡 Kiểm tra URL và thử lại.",
                     chat_id=chat_id,
                     message_id=processing_msg.message_id,
@@ -3897,57 +3889,34 @@ def handle_user_input(message):
                 bot.reply_to(message, f"❌ {error}", reply_markup=markup)
             return
         
-        # ===== PREVIEW & ASK CONFIRMATION =====
-        qa_count = len(data.get('qa_pairs', []))
-        
-        # Calculate source breakdown for preview
-        source_breakdown = {'faq': 0, 'heading': 0, 'heading_content': 0, 'meta': 0, 'direct_qa': 0}
-        for qa in data.get('qa_pairs', []):
-            source_type = qa.get('source', 'unknown')
-            if source_type in source_breakdown:
-                source_breakdown[source_type] += 1
+        # ===== PREVIEW & CONFIRM - HỌC BỊ ĐỘNG =====
+        content_length = data.get('content_length', 0)
         
         # Save to temporary state for confirmation
         user_states[user_id] = f"confirm_scrape_data||{url}"
         
-        # Build preview text with intelligent extraction info
-        preview_text = f"🔍 **PREVIEW DỮ LIỆU (AI AUTO-LEARNING)**\n\n"
+        # Build preview text - HỌC BỊ ĐỘNG
+        preview_text = f"✅ **NGUỒN WEB ĐÃ SẴN SÀNG**\n\n"
         preview_text += f"🌐 URL: {url[:60]}\n"
         preview_text += f"📄 Title: {data.get('title', 'N/A')[:60]}\n"
-        preview_text += f"📊 Tổng số: {qa_count} cặp Q&A\n\n"
+        preview_text += f"📝 Description: {data.get('description', 'N/A')[:100]}\n"
+        preview_text += f"📊 Nội dung: {content_length:,} ký tự\n\n"
         
-        # Show intelligent extraction breakdown
-        if any(source_breakdown.values()):
-            preview_text += "🤖 **AI đã trích xuất:**\n"
-            if source_breakdown['faq'] > 0:
-                preview_text += f"   ✅ FAQ sections: {source_breakdown['faq']}\n"
-            if source_breakdown['heading_content'] > 0:
-                preview_text += f"   ✅ Headings + Content: {source_breakdown['heading_content']}\n"
-            if source_breakdown['heading'] > 0:
-                preview_text += f"   ✅ Direct headings: {source_breakdown['heading']}\n"
-            if source_breakdown['direct_qa'] > 0:
-                preview_text += f"   ✅ Q&A patterns: {source_breakdown['direct_qa']}\n"
-            if source_breakdown['meta'] > 0:
-                preview_text += f"   ✅ Meta data: {source_breakdown['meta']}\n"
-            preview_text += "\n"
+        preview_text += "🤖 **HỌC BỊ ĐỘNG (On-Demand)**\n"
+        preview_text += "✅ AI chưa trích xuất dữ liệu ngay\n"
+        preview_text += "✅ Khi bạn hỏi, AI sẽ tự tìm trong nguồn này\n"
+        preview_text += "✅ Trích xuất và trả lời chỉ khi cần\n"
+        preview_text += "✅ Tiết kiệm bộ nhớ và nhanh hơn\n\n"
         
-        if qa_count > 0:
-            preview_text += "📋 **Mẫu dữ liệu:**\n\n"
-            # Show first 3 Q&A pairs as preview
-            for i, qa in enumerate(data.get('qa_pairs', [])[:3], 1):
-                q = qa['question'][:80] + '...' if len(qa['question']) > 80 else qa['question']
-                a = qa['answer'][:100] + '...' if len(qa['answer']) > 100 else qa['answer']
-                source_label = qa.get('source', 'unknown')
-                preview_text += f"{i}. **Q:** {q}\n"
-                preview_text += f"   **A:** {a}\n"
-                preview_text += f"   _[{source_label}]_\n\n"
-            
-            if qa_count > 3:
-                preview_text += f"_...và {qa_count - 3} cặp Q&A khác_\n\n"
+        preview_text += "💡 **Ví dụ:**\n"
+        preview_text += "Bạn hỏi: \"Công ty làm gì?\"\n"
+        preview_text += "→ AI tìm trong nguồn này\n"
+        preview_text += "→ Trích xuất câu trả lời\n"
+        preview_text += "→ Trả lời với trích dẫn nguồn\n\n"
         
-        preview_text += "❓ **Bạn có muốn thêm dữ liệu này vào AI Knowledge Base?**"
+        preview_text += "❓ **Bạn có muốn thêm nguồn web này?**"
         
-        # Store scraped data temporarily (in a global dict)
+        # Store scraped data temporarily
         if not hasattr(user_states, '_temp_scraped_data'):
             user_states._temp_scraped_data = {}
         user_states._temp_scraped_data[user_id] = {
