@@ -1826,6 +1826,38 @@ def callback_handler(call):
         )
         bot.answer_callback_query(call.id)
     
+    # Organization - Web Sources Menu
+    elif call.data == "org_web_sources":
+        org_id = get_active_org(user_id)
+        if not org_id:
+            bot.answer_callback_query(call.id, "⚠️ Chưa có organization!", show_alert=True)
+            return
+        
+        web_list = web_sources.get(org_id, [])
+        text = f"🌐 **NGUỒN WEB**\n\n"
+        text += f"📊 Tổng số: {len(web_list)} nguồn\n\n"
+        
+        if web_list:
+            text += "📋 Danh sách:\n"
+            for i, source in enumerate(web_list, 1):
+                text += f"{i}. {source.get('url', 'N/A')}\n"
+                text += f"   📅 {source.get('last_scraped', 'Chưa scrape')}\n"
+                text += f"   📊 {source.get('items_count', 0)} items\n\n"
+        else:
+            text += "💡 Chưa scrape website nào.\n\n"
+        
+        text += "🎯 Scrape website để tự động học Q&A!"
+        
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        btn_add = types.InlineKeyboardButton("➕ Scrape Website Mới", callback_data="import_web")
+        markup.add(btn_add)
+        
+        btn_back = types.InlineKeyboardButton("🔙 Menu Doanh Nghiệp", callback_data="category_enterprise")
+        markup.add(btn_back)
+        
+        bot.edit_message_text(text, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup, parse_mode='Markdown')
+        bot.answer_callback_query(call.id)
+    
     # Organization - Import Menu
     elif call.data == "org_import":
         org_id = get_active_org(user_id)
