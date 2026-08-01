@@ -135,6 +135,155 @@ web_sources = {}
 # Proactive AI suggestions
 proactive_suggestions = {}  # user_id -> [{'type': 'missing_data', 'message': '...', 'actions': [...]}]
 
+# ============= JSON PERSISTENCE =============
+import os
+import shutil
+from pathlib import Path
+
+# Data directory
+DATA_DIR = Path(__file__).parent / 'data'
+BACKUP_DIR = Path(__file__).parent / 'backups'
+
+# Create directories if not exist
+DATA_DIR.mkdir(exist_ok=True)
+BACKUP_DIR.mkdir(exist_ok=True)
+
+# Data file paths
+DATA_FILES = {
+    'user_tasks': DATA_DIR / 'user_tasks.json',
+    'user_timezones': DATA_DIR / 'user_timezones.json',
+    'user_states': DATA_DIR / 'user_states.json',
+    'user_chat_mapping': DATA_DIR / 'user_chat_mapping.json',
+    'ai_knowledge_base': DATA_DIR / 'ai_knowledge_base.json',
+    'user_ai_chat_mode': DATA_DIR / 'user_ai_chat_mode.json',
+    'organizations': DATA_DIR / 'organizations.json',
+    'user_organizations': DATA_DIR / 'user_organizations.json',
+    'user_active_org': DATA_DIR / 'user_active_org.json',
+    'departments': DATA_DIR / 'departments.json',
+    'contacts': DATA_DIR / 'contacts.json',
+    'web_sources': DATA_DIR / 'web_sources.json',
+    'proactive_suggestions': DATA_DIR / 'proactive_suggestions.json',
+}
+
+def save_data():
+    """Save all data to JSON files"""
+    try:
+        data_to_save = {
+            'user_tasks': user_tasks,
+            'user_timezones': user_timezones,
+            'user_states': user_states,
+            'user_chat_mapping': user_chat_mapping,
+            'ai_knowledge_base': ai_knowledge_base,
+            'user_ai_chat_mode': user_ai_chat_mode,
+            'organizations': organizations,
+            'user_organizations': user_organizations,
+            'user_active_org': user_active_org,
+            'departments': departments,
+            'contacts': contacts,
+            'web_sources': web_sources,
+            'proactive_suggestions': proactive_suggestions,
+        }
+        
+        for key, filepath in DATA_FILES.items():
+            try:
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(data_to_save[key], f, ensure_ascii=False, indent=2, default=str)
+            except Exception as e:
+                print(f"⚠️ Error saving {key}: {e}")
+        
+        # print("✅ Data saved successfully")
+    except Exception as e:
+        print(f"❌ Error saving data: {e}")
+
+def load_data():
+    """Load all data from JSON files"""
+    global user_tasks, user_timezones, user_states, user_chat_mapping
+    global ai_knowledge_base, user_ai_chat_mode
+    global organizations, user_organizations, user_active_org
+    global departments, contacts, web_sources, proactive_suggestions
+    
+    try:
+        loaded_count = 0
+        for key, filepath in DATA_FILES.items():
+            if filepath.exists():
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        
+                        # Convert string keys back to int for user_id keys
+                        if key in ['user_tasks', 'user_timezones', 'user_states', 'user_chat_mapping', 
+                                   'ai_knowledge_base', 'user_ai_chat_mode', 'user_organizations', 
+                                   'user_active_org', 'proactive_suggestions']:
+                            data = {int(k) if k.isdigit() else k: v for k, v in data.items()}
+                        
+                        # Assign to global variables
+                        if key == 'user_tasks':
+                            user_tasks = data
+                        elif key == 'user_timezones':
+                            user_timezones = data
+                        elif key == 'user_states':
+                            user_states = data
+                        elif key == 'user_chat_mapping':
+                            user_chat_mapping = data
+                        elif key == 'ai_knowledge_base':
+                            ai_knowledge_base = data
+                        elif key == 'user_ai_chat_mode':
+                            user_ai_chat_mode = data
+                        elif key == 'organizations':
+                            organizations = data
+                        elif key == 'user_organizations':
+                            user_organizations = data
+                        elif key == 'user_active_org':
+                            user_active_org = data
+                        elif key == 'departments':
+                            departments = data
+                        elif key == 'contacts':
+                            contacts = data
+                        elif key == 'web_sources':
+                            web_sources = data
+                        elif key == 'proactive_suggestions':
+                            proactive_suggestions = data
+                        
+                        loaded_count += 1
+                except Exception as e:
+                    print(f"⚠️ Error loading {key}: {e}")
+        
+        if loaded_count > 0:
+            print(f"✅ Loaded {loaded_count} data files")
+            # Print stats
+            print(f"   📊 Organizations: {len(organizations)}")
+            print(f"   👥 Users with tasks: {len(user_tasks)}")
+            print(f"   🏢 Departments: {sum(len(v) for v in departments.values())}")
+            print(f"   📇 Contacts: {sum(len(v) for v in contacts.values())}")
+            print(f"   🧠 KB entries: {sum(len(v) for v in ai_knowledge_base.values())}")
+        else:
+            print("ℹ️ No existing data found, starting fresh")
+    except Exception as e:
+        print(f"❌ Error loading data: {e}")
+
+def auto_backup():
+    """Create automatic backup of all data"""
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = BACKUP_DIR / f"backup_{timestamp}.zip"
+        
+        # Create zip archive
+        import zipfile
+        with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for filepath in DATA_FILES.values():
+                if filepath.exists():
+                    zipf.write(filepath, filepath.name)
+        
+        print(f"✅ Backup created: {backup_file.name}")
+        
+        # Keep only last 7 backups
+        backups = sorted(BACKUP_DIR.glob("backup_*.zip"), key=lambda x: x.stat().st_mtime, reverse=True)
+        for old_backup in backups[7:]:
+            old_backup.unlink()
+            print(f"🗑️ Deleted old backup: {old_backup.name}")
+    except Exception as e:
+        print(f"⚠️ Error creating backup: {e}")
+
 
 def get_user_id(message):
     """Lấy user ID từ message (để đảm bảo privacy trong group)"""
@@ -354,6 +503,7 @@ def reminder_checker():
                                 
                                 bot.send_message(chat_id, reminder_text, reply_markup=markup)
                                 task['reminded'] = True
+                                save_data()
                                 print(f"Reminder sent successfully to user_id {user_id}")
                             except Exception as e:
                                 print(f"Error sending reminder: {e}")
@@ -663,6 +813,7 @@ def add_task(message):
         'remind_time': None,
         'reminded': False
     })
+    save_data()
     
     # Hiển thị với menu buttons
     markup = types.InlineKeyboardMarkup()
@@ -699,6 +850,7 @@ def mark_done(message):
         task_number = int(message.text.split()[1])
         if 1 <= task_number <= len(user_tasks[user_id]):
             user_tasks[user_id][task_number - 1]['done'] = True
+            save_data()
             bot.reply_to(message, f"✅ Đã đánh dấu hoàn thành: '{user_tasks[user_id][task_number - 1]['content']}'")
         else:
             bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[user_id])}")
@@ -755,6 +907,7 @@ def set_reminder(message):
         
         # Cập nhật reminder (lưu ở UTC)
         user_tasks[user_id][task_number - 1]['remind_time'] = remind_time
+        save_data()
         user_tasks[user_id][task_number - 1]['reminded'] = False
         
         task_content = user_tasks[user_id][task_number - 1]['content']
@@ -909,6 +1062,7 @@ def add_to_knowledge_base(user_id, question, answer):
         'keywords': keywords,
         'created_at': datetime.utcnow().isoformat()
     })
+    save_data()
     return True
 
 def get_ai_response(user_id, user_message):
@@ -1044,6 +1198,7 @@ def create_organization(user_id, org_name):
     contacts[org_id] = []
     web_sources[org_id] = []
     
+    save_data()
     return org_id
 
 def add_department(org_id, name, manager='', description='', email='', phone=''):
@@ -1065,6 +1220,7 @@ def add_department(org_id, name, manager='', description='', email='', phone='')
         departments[org_id] = []
     departments[org_id].append(dept)
     
+    save_data()
     return dept_id
 
 def add_contact(org_id, name, position='', department='', email='', phone='', extension='', skills=None, notes=''):
@@ -1094,6 +1250,7 @@ def add_contact(org_id, name, position='', department='', email='', phone='', ex
                 dept['members'].append(contact_id)
                 break
     
+    save_data()
     return contact_id
 
 def search_department(org_id, query):
@@ -2369,6 +2526,7 @@ def callback_handler(call):
         
         elif action == "delete":
             deleted_task = user_tasks[user_id].pop(task_idx)
+            save_data()
             bot.answer_callback_query(call.id, f"🗑️ Đã xóa: {deleted_task['content']}")
             if user_tasks[user_id]:
                 show_task_list(user_id, chat_id, call.message.message_id)
@@ -2498,6 +2656,7 @@ def callback_handler(call):
                 
                 user_tasks[user_id][task_idx]['remind_time'] = remind_utc
                 user_tasks[user_id][task_idx]['reminded'] = False
+                save_data()
                 
                 task_content = user_tasks[user_id][task_idx]['content']
                 remind_str = remind_local.strftime("%d/%m/%Y %H:%M")
@@ -2546,6 +2705,7 @@ def callback_handler(call):
                 
                 user_tasks[user_id][task_idx]['remind_time'] = remind_utc
                 user_tasks[user_id][task_idx]['reminded'] = False
+                save_data()
                 
                 task_content = user_tasks[user_id][task_idx]['content']
                 remind_local = get_user_time(user_id, remind_utc)
@@ -2681,6 +2841,7 @@ def callback_handler(call):
             if task.get('remind_time'):
                 task['remind_time'] = task['remind_time'] + timedelta(minutes=snooze_minutes)
                 task['reminded'] = False  # Cho phép nhắc lại
+                save_data()
                 
                 remind_local = get_user_time(user_id, task['remind_time'])
                 remind_str = remind_local.strftime("%H:%M")
@@ -2776,6 +2937,7 @@ def handle_user_input(message):
             'remind_time': None,
             'reminded': False
         })
+        save_data()
         
         user_states[user_id] = None
         
@@ -2855,6 +3017,7 @@ def handle_user_input(message):
             # Lưu reminder
             user_tasks[user_id][task_idx]['remind_time'] = remind_utc
             user_tasks[user_id][task_idx]['reminded'] = False
+            save_data()
             user_states[user_id] = None
             
             task_content = user_tasks[user_id][task_idx]['content']
@@ -2921,6 +3084,7 @@ def handle_user_input(message):
             # Lưu reminder
             user_tasks[user_id][task_idx]['remind_time'] = remind_utc
             user_tasks[user_id][task_idx]['reminded'] = False
+            save_data()
             user_states[user_id] = None
             
             task_content = user_tasks[user_id][task_idx]['content']
@@ -2962,6 +3126,7 @@ def handle_user_input(message):
         
         user_tasks[user_id][task_idx]['remind_time'] = remind_time
         user_tasks[user_id][task_idx]['reminded'] = False
+        save_data()
         user_states[user_id] = None
         
         task_content = user_tasks[user_id][task_idx]['content']
@@ -3056,6 +3221,7 @@ def handle_user_input(message):
         # Create organization
         org_id = create_organization(user_id, org_name)
         user_states[user_id] = None
+        save_data()
         
         markup = types.InlineKeyboardMarkup()
         btn_dept = types.InlineKeyboardButton("🏛️ Thêm Phòng Ban", callback_data="dept_add")
@@ -3676,6 +3842,7 @@ def handle_natural_language(message):
         'remind_time': None,
         'reminded': False
     })
+    save_data()
     
     response_text = f"✅ Đã thêm: '{task_content}'"
     
@@ -3685,6 +3852,7 @@ def handle_natural_language(message):
         if remind_time and remind_time > datetime.utcnow():
             user_tasks[user_id][task_idx]['remind_time'] = remind_time
             user_tasks[user_id][task_idx]['reminded'] = False
+            save_data()
             
             user_time = get_user_time(user_id, remind_time)
             remind_str = user_time.strftime("%d/%m/%Y %H:%M")
@@ -3704,6 +3872,15 @@ def handle_natural_language(message):
 # Chạy bot
 if __name__ == "__main__":
     print("🤖 Bot đang khởi động...")
+    
+    # Load existing data from JSON files
+    print("📂 Loading data...")
+    load_data()
+    
+    # Create daily backup
+    print("💾 Creating backup...")
+    auto_backup()
+    
     try:
         bot_info = bot.get_me()
         print(f"📱 Bot name: @{bot_info.username}")
