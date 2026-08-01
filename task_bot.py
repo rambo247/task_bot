@@ -2112,6 +2112,155 @@ def callback_handler(call):
         )
         bot.answer_callback_query(call.id)
     
+    # Scrape Confirmation - YES
+    elif call.data == "scrape_confirm_yes":
+        # Retrieve temporary scraped data
+        if not hasattr(user_states, '_temp_scraped_data') or user_id not in user_states._temp_scraped_data:
+            bot.answer_callback_query(call.id, "⚠️ Dữ liệu đã hết hạn. Thử lại!", show_alert=True)
+            return
+        
+        temp_data = user_states._temp_scraped_data[user_id]
+        url = temp_data['url']
+        data = temp_data['data']
+        org_id = temp_data['org_id']
+        
+        # Add Q&A to KB
+        qa_count = 0
+        for qa in data.get('qa_pairs', []):
+            add_to_knowledge_base(user_id, qa['question'], qa['answer'])
+            qa_count += 1
+        
+        # Save web source
+        if org_id not in web_sources:
+            web_sources[org_id] = []
+        
+        web_sources[org_id].append({
+            'id': generate_id('source'),
+            'url': url,
+            'type': 'scraped',
+            'last_scraped': datetime.utcnow().isoformat(),
+            'status': 'success',
+            'items_count': qa_count
+        })
+        save_data()
+        
+        # Clean up
+        del user_states._temp_scraped_data[user_id]
+        user_states[user_id] = None
+        
+        result_text = f"✅ **ĐÃ LƯU VÀO KNOWLEDGE BASE**\n\n"
+        result_text += f"🌐 URL: {url[:60]}\n"
+        result_text += f"📄 Title: {data.get('title', 'N/A')[:60]}\n"
+        result_text += f"📚 Đã học: {qa_count} cặp Q&A\n\n"
+        result_text += f"💡 AI có thể trả lời các câu hỏi từ website này!"
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_more = types.InlineKeyboardButton("🌐 Scrape URL Khác", callback_data="import_web")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu Doanh Nghiệp", callback_data="category_enterprise")
+        markup.add(btn_more, btn_menu)
+        
+        bot.edit_message_text(
+            result_text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id, "✅ Đã lưu vào KB!")
+    
+    # Scrape Confirmation - NO
+    elif call.data == "scrape_confirm_no":
+        # Clean up temporary data
+        if hasattr(user_states, '_temp_scraped_data') and user_id in user_states._temp_scraped_data:
+            del user_states._temp_scraped_data[user_id]
+        
+        user_states[user_id] = None
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_retry = types.InlineKeyboardButton("🔄 Scrape Lại", callback_data="import_web")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu Doanh Nghiệp", callback_data="category_enterprise")
+        markup.add(btn_retry, btn_menu)
+        
+        bot.edit_message_text(
+            "❌ **ĐÃ HỦY**\n\n"
+            "Dữ liệu không được thêm vào Knowledge Base.\n\n"
+            "💡 Bạn có thể scrape URL khác hoặc quay lại menu.",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id, "❌ Đã hủy")
+    
+    # Import Text Confirmation - YES
+    elif call.data == "import_confirm_yes":
+        # Retrieve temporary import data
+        if not hasattr(user_states, '_temp_import_data') or user_id not in user_states._temp_import_data:
+            bot.answer_callback_query(call.id, "⚠️ Dữ liệu đã hết hạn. Thử lại!", show_alert=True)
+            return
+        
+        temp_data = user_states._temp_import_data[user_id]
+        qa_pairs = temp_data['qa_pairs']
+        results = temp_data['results']
+        
+        # Add Q&A to user's KB
+        for qa in qa_pairs:
+            add_to_knowledge_base(user_id, qa['question'], qa['answer'])
+        
+        save_data()
+        
+        # Clean up
+        del user_states._temp_import_data[user_id]
+        user_states[user_id] = None
+        
+        # Format results
+        result_text = "✅ **ĐÃ LƯU VÀO KNOWLEDGE BASE**\n\n"
+        result_text += f"📚 Q&A: {results['qa_pairs']}\n"
+        result_text += f"🏛️ Phòng ban: {results['departments']}\n"
+        result_text += f"👥 Nhân viên: {results['contacts']}\n\n"
+        result_text += f"💡 AI có thể trả lời các câu hỏi từ dữ liệu này!"
+        
+        if results['errors']:
+            result_text += f"\n\n⚠️ Lỗi: {len(results['errors'])} dòng"
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_import = types.InlineKeyboardButton("📥 Import Thêm", callback_data="org_import")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu Doanh Nghiệp", callback_data="category_enterprise")
+        markup.add(btn_import, btn_menu)
+        
+        bot.edit_message_text(
+            result_text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id, "✅ Đã lưu vào KB!")
+    
+    # Import Text Confirmation - NO
+    elif call.data == "import_confirm_no":
+        # Clean up temporary data
+        if hasattr(user_states, '_temp_import_data') and user_id in user_states._temp_import_data:
+            del user_states._temp_import_data[user_id]
+        
+        user_states[user_id] = None
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_retry = types.InlineKeyboardButton("🔄 Import Lại", callback_data="import_text")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu Doanh Nghiệp", callback_data="category_enterprise")
+        markup.add(btn_retry, btn_menu)
+        
+        bot.edit_message_text(
+            "❌ **ĐÃ HỦY**\n\n"
+            "Dữ liệu không được thêm vào Knowledge Base.\n\n"
+            "💡 Bạn có thể import lại hoặc quay lại menu.",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id, "❌ Đã hủy")
+    
     # ===== END ENTERPRISE CALLBACKS =====
     
     # ===== TASKS SUBMENU =====
@@ -3380,10 +3529,11 @@ def handle_user_input(message):
         # Processing message
         processing_msg = bot.reply_to(message, "📊 Đang phân tích dữ liệu...")
         
-        # Import
+        # Parse data first
         results = import_from_text(import_data, org_id)
         
-        # Also add Q&A to user's KB
+        # Count Q&A pairs
+        qa_pairs = []
         for line in import_data.split('\n'):
             line = line.strip()
             if '|' in line and not line.startswith('['):
@@ -3392,35 +3542,61 @@ def handle_user_input(message):
                     question = parts[0].strip()
                     answer = parts[1].strip()
                     if question and answer and not question.startswith('#'):
-                        add_to_knowledge_base(user_id, question, answer)
+                        qa_pairs.append({'question': question, 'answer': answer})
         
-        user_states[user_id] = None
+        # ===== PREVIEW & ASK CONFIRMATION =====
+        total_items = results['qa_pairs'] + results['departments'] + results['contacts']
         
-        # Format results
-        result_text = "✅ **KẾT QUẢ IMPORT**\n\n"
-        result_text += f"📚 Q&A: {results['qa_pairs']}\n"
-        result_text += f"🏛️ Phòng ban: {results['departments']}\n"
-        result_text += f"👥 Nhân viên: {results['contacts']}\n"
+        # Build preview text
+        preview_text = f"🔍 **PREVIEW DỮ LIỆU**\n\n"
+        preview_text += f"📊 Tổng số items:\n"
+        preview_text += f"   📚 Q&A: {results['qa_pairs']}\n"
+        preview_text += f"   🏛️ Phòng ban: {results['departments']}\n"
+        preview_text += f"   👥 Nhân viên: {results['contacts']}\n\n"
+        
+        if qa_pairs:
+            preview_text += "📋 **Mẫu Q&A:**\n\n"
+            for i, qa in enumerate(qa_pairs[:3], 1):
+                q = qa['question'][:60] + '...' if len(qa['question']) > 60 else qa['question']
+                a = qa['answer'][:80] + '...' if len(qa['answer']) > 80 else qa['answer']
+                preview_text += f"{i}. **Q:** {q}\n"
+                preview_text += f"   **A:** {a}\n\n"
+            
+            if len(qa_pairs) > 3:
+                preview_text += f"_...và {len(qa_pairs) - 3} cặp Q&A khác_\n\n"
         
         if results['errors']:
-            result_text += f"\n⚠️ Lỗi: {len(results['errors'])} dòng\n"
-            result_text += f"(Xem chi tiết trong log)"
+            preview_text += f"⚠️ **Lỗi:** {len(results['errors'])} dòng\n\n"
+        
+        preview_text += "❓ **Bạn có muốn thêm dữ liệu này vào Knowledge Base?**"
+        
+        # Store import data temporarily
+        if not hasattr(user_states, '_temp_import_data'):
+            user_states._temp_import_data = {}
+        user_states._temp_import_data[user_id] = {
+            'import_data': import_data,
+            'qa_pairs': qa_pairs,
+            'results': results,
+            'org_id': org_id
+        }
+        
+        user_states[user_id] = "confirm_import_text"
         
         markup = types.InlineKeyboardMarkup()
-        btn_import = types.InlineKeyboardButton("📥 Import Thêm", callback_data="org_import")
-        btn_menu = types.InlineKeyboardButton("🏠 Menu Doanh Nghiệp", callback_data="category_enterprise")
-        markup.add(btn_import, btn_menu)
+        btn_yes = types.InlineKeyboardButton("✅ Có, thêm vào KB", callback_data="import_confirm_yes")
+        btn_no = types.InlineKeyboardButton("❌ Không, hủy bỏ", callback_data="import_confirm_no")
+        markup.add(btn_yes, btn_no)
         
         try:
             bot.edit_message_text(
-                result_text,
+                preview_text,
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
                 reply_markup=markup,
                 parse_mode='Markdown'
             )
         except:
-            bot.reply_to(message, result_text, reply_markup=markup, parse_mode='Markdown')
+            bot.reply_to(message, preview_text, reply_markup=markup, parse_mode='Markdown')
     
     # Import từ URL
     elif state == "waiting_import_url":
@@ -3463,48 +3639,56 @@ def handle_user_input(message):
                 bot.reply_to(message, f"❌ {error}", reply_markup=markup)
             return
         
-        # Add Q&A to KB
-        qa_count = 0
-        for qa in data.get('qa_pairs', []):
-            add_to_knowledge_base(user_id, qa['question'], qa['answer'])
-            qa_count += 1
+        # ===== PREVIEW & ASK CONFIRMATION =====
+        qa_count = len(data.get('qa_pairs', []))
         
-        # Save web source
-        if org_id not in web_sources:
-            web_sources[org_id] = []
+        # Save to temporary state for confirmation
+        user_states[user_id] = f"confirm_scrape_data||{url}"
         
-        web_sources[org_id].append({
-            'id': generate_id('source'),
+        # Build preview text
+        preview_text = f"🔍 **PREVIEW DỮ LIỆU**\n\n"
+        preview_text += f"🌐 URL: {url[:60]}\n"
+        preview_text += f"📄 Title: {data.get('title', 'N/A')[:60]}\n"
+        preview_text += f"📊 Tổng số: {qa_count} cặp Q&A\n\n"
+        
+        if qa_count > 0:
+            preview_text += "📋 **Mẫu dữ liệu:**\n\n"
+            # Show first 3 Q&A pairs as preview
+            for i, qa in enumerate(data.get('qa_pairs', [])[:3], 1):
+                q = qa['question'][:80] + '...' if len(qa['question']) > 80 else qa['question']
+                a = qa['answer'][:100] + '...' if len(qa['answer']) > 100 else qa['answer']
+                preview_text += f"{i}. **Q:** {q}\n"
+                preview_text += f"   **A:** {a}\n\n"
+            
+            if qa_count > 3:
+                preview_text += f"_...và {qa_count - 3} cặp Q&A khác_\n\n"
+        
+        preview_text += "❓ **Bạn có muốn thêm dữ liệu này vào AI Knowledge Base?**"
+        
+        # Store scraped data temporarily (in a global dict)
+        if not hasattr(user_states, '_temp_scraped_data'):
+            user_states._temp_scraped_data = {}
+        user_states._temp_scraped_data[user_id] = {
             'url': url,
-            'type': 'scraped',
-            'last_scraped': datetime.utcnow().isoformat(),
-            'status': 'success',
-            'items_count': qa_count
-        })
-        
-        user_states[user_id] = None
-        
-        result_text = f"✅ **SCRAPING THÀNH CÔNG**\n\n"
-        result_text += f"🌐 URL: {url[:50]}...\n"
-        result_text += f"📄 Title: {data.get('title', 'N/A')[:50]}\n"
-        result_text += f"📚 Đã học: {qa_count} cặp Q&A\n\n"
-        result_text += f"💡 AI có thể trả lời các câu hỏi từ website này!"
+            'data': data,
+            'org_id': org_id
+        }
         
         markup = types.InlineKeyboardMarkup()
-        btn_more = types.InlineKeyboardButton("🌐 Scrape URL Khác", callback_data="import_web")
-        btn_menu = types.InlineKeyboardButton("🏠 Menu Doanh Nghiệp", callback_data="category_enterprise")
-        markup.add(btn_more, btn_menu)
+        btn_yes = types.InlineKeyboardButton("✅ Có, thêm vào KB", callback_data="scrape_confirm_yes")
+        btn_no = types.InlineKeyboardButton("❌ Không, hủy bỏ", callback_data="scrape_confirm_no")
+        markup.add(btn_yes, btn_no)
         
         try:
             bot.edit_message_text(
-                result_text,
+                preview_text,
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
                 reply_markup=markup,
                 parse_mode='Markdown'
             )
         except:
-            bot.reply_to(message, result_text, reply_markup=markup, parse_mode='Markdown')
+            bot.reply_to(message, preview_text, reply_markup=markup, parse_mode='Markdown')
     
     # ===== END ENTERPRISE STATES =====
 
