@@ -2389,7 +2389,11 @@ def callback_handler(call):
         result_text += f"   ✅ AI sẽ tìm khi bạn hỏi\n"
         result_text += f"   ✅ Trích xuất on-demand\n\n"
         
-        result_text += f"💡 Bây giờ hãy chat với AI và hỏi câu hỏi liên quan đến nguồn này!"
+        result_text += f"💡 **Cách sử dụng:**\n"
+        result_text += f"1. Click **💬 Chat với AI** bên dưới\n"
+        result_text += f"2. Click **⚡ Bật/Tắt AI Chat**\n"
+        result_text += f"3. Gửi câu hỏi liên quan đến nguồn này\n"
+        result_text += f"4. AI sẽ tự động tìm và trả lời!"
         
         markup = types.InlineKeyboardMarkup()
         btn_chat = types.InlineKeyboardButton("💬 Chat với AI", callback_data="category_ai")
@@ -2422,8 +2426,8 @@ def callback_handler(call):
         
         bot.edit_message_text(
             "❌ **ĐÃ HỦY**\n\n"
-            "Dữ liệu không được thêm vào Knowledge Base.\n\n"
-            "💡 Bạn có thể scrape URL khác hoặc quay lại menu.",
+            "Nguồn web không được thêm vào doanh nghiệp.\n\n"
+            "💡 Bạn có thể thêm URL khác hoặc quay lại menu.",
             chat_id=chat_id,
             message_id=call.message.message_id,
             reply_markup=markup,
@@ -3607,6 +3611,23 @@ def handle_user_input(message):
     
     # ===== ENTERPRISE STATES =====
     
+    # Confirm web source (đang chờ user click button confirmation)
+    elif state.startswith("confirm_scrape_data||"):
+        # User đang ở state chờ confirm, nhưng lại gửi text message
+        # Không làm gì, chỉ nhắc user click button
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Menu", callback_data="org_import")
+        markup.add(btn_back)
+        
+        bot.reply_to(message,
+            "⏳ **Đang chờ xác nhận...**\n\n"
+            "Vui lòng click nút **✅ Có, thêm nguồn web** hoặc **❌ Không, hủy bỏ** ở tin nhắn trước đó.\n\n"
+            "💡 Hoặc quay lại menu để hủy.",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        return
+    
     # Tạo organization
     elif state == "waiting_org_name":
         org_name = message.text.strip()
@@ -3927,7 +3948,7 @@ def handle_user_input(message):
         }
         
         markup = types.InlineKeyboardMarkup()
-        btn_yes = types.InlineKeyboardButton("✅ Có, thêm vào KB", callback_data="scrape_confirm_yes")
+        btn_yes = types.InlineKeyboardButton("✅ Có, thêm nguồn web", callback_data="scrape_confirm_yes")
         btn_no = types.InlineKeyboardButton("❌ Không, hủy bỏ", callback_data="scrape_confirm_no")
         markup.add(btn_yes, btn_no)
         
