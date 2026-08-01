@@ -3786,17 +3786,26 @@ def handle_natural_language(message):
         if ai_response:
             markup = types.InlineKeyboardMarkup()
             btn_save = types.InlineKeyboardButton("💾 Lưu Q&A này", callback_data="kb_save_last")
-            btn_menu = types.InlineKeyboardButton("🏠 Menu", callback_data="menu_main")
-            markup.add(btn_save, btn_menu)
+            markup.add(btn_save)
+            
+            btn_ai = types.InlineKeyboardButton("🤖 Menu AI", callback_data="category_ai")
+            btn_menu = types.InlineKeyboardButton("🏠 Menu Chính", callback_data="menu_main")
+            markup.add(btn_ai, btn_menu)
             
             bot.reply_to(message, ai_response, reply_markup=markup, parse_mode='Markdown')
         else:
+            markup = types.InlineKeyboardMarkup()
+            btn_ai = types.InlineKeyboardButton("🤖 Menu AI", callback_data="category_ai")
+            btn_menu = types.InlineKeyboardButton("🏠 Menu Chính", callback_data="menu_main")
+            markup.add(btn_ai, btn_menu)
+            
             bot.reply_to(message,
                 "😅 Xin lỗi, tôi chưa thể trả lời câu hỏi này.\n\n"
                 "💡 Bạn có thể:\n"
                 "• Thêm dữ liệu Q&A vào Menu AI\n"
                 "• Import dữ liệu từ Menu Doanh Nghiệp\n"
-                "• Cấu hình GitHub Token để dùng AI"
+                "• Cấu hình GitHub Token để dùng AI",
+                reply_markup=markup
             )
         return
     
