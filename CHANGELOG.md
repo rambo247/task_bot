@@ -2,6 +2,108 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi lại ở đây.
 
+## [2.1.0] - 2026-08-01 🤖 AI INTELLIGENT WEB SCRAPING
+
+### 🌟 Major AI Upgrade
+
+#### 🧠 Smart Web Scraping & Knowledge Extraction
+- **Intelligent Content Analysis**: AI tự động phân tích cấu trúc website
+- **Multi-Source Extraction**: FAQ sections, headings, meta descriptions, direct Q&A
+- **Auto Q&A Generation**: Tạo câu hỏi thông minh từ headings và content
+- **Deduplication**: Tự động loại bỏ Q&A trùng lặp
+- **Scale**: Up to 100 Q&A per page (từ 50)
+
+### ✨ New Features
+
+#### 📊 Rich Metadata System
+- **Source Tracking**: web_faq, web_heading, web_heading_content, meta, direct_qa, manual, text_import
+- **URL References**: Lưu URL và title nguồn cho mỗi Q&A
+- **Usage Analytics**: Track usage_count và last_used
+- **Confidence Scoring**: Đánh giá độ tin cậy của mỗi Q&A
+- **Timestamps**: created_at và updated_at
+- **Tags & Categories**: Support for future organization
+
+#### 🔍 Enhanced Knowledge Base Search
+- **Metadata-Aware**: Sử dụng source type để scoring
+- **Source Priority**: FAQ > Heading > Direct Q&A
+- **Usage Tracking**: Auto-update usage stats khi tìm thấy
+- **Rich Results**: Return full object với source info
+- **Confidence Levels**: Cao (≥90%), Trung bình (≥60%)
+
+#### 🎯 Smart AI Response
+- **Source Attribution**: Hiển thị nguồn với link
+- **Confidence Display**: Show độ tin cậy của câu trả lời
+- **AI Reasoning**: Suy luận từ KB context
+- **Citation**: Trích dẫn nguồn khi trả lời
+- **Context-Aware**: Sử dụng high-usage items cho context
+
+#### 📋 Detailed Preview & Results
+- **Source Breakdown**: FAQ, Headings, Meta, Direct Q&A counts
+- **Source Labels**: Hiển thị source type cho mỗi Q&A
+- **Extraction Statistics**: Show detailed stats sau khi scrape
+- **Web Sources Tracking**: Lưu history và analytics
+
+### 🔧 Technical Improvements
+
+#### 🛠️ Enhanced Functions
+- `scrape_website()`: 
+  - 5 extraction methods (FAQ, Heading+Content, Heading, Meta, Direct Q&A)
+  - Smart question generation từ headings
+  - Contextual content extraction
+  - Advanced deduplication
+  
+- `add_to_knowledge_base()`:
+  - Support source và metadata parameters
+  - Rich entry structure với tracking fields
+  - Flexible metadata system
+  
+- `search_knowledge_base()`:
+  - Return full result object
+  - Source-based scoring
+  - Auto-update usage tracking
+  
+- `get_ai_response()`:
+  - Source attribution trong responses
+  - Confidence level display
+  - Context-aware AI reasoning
+  - High-usage context prioritization
+
+#### 💾 Enhanced Data Persistence
+- **web_sources**: Detailed stats với source_breakdown
+- **scraped_by**: Track user ID
+- **All metadata**: Saved to JSON
+- **Backward Compatible**: Works with existing data
+
+### 📚 Documentation
+- **AI_SMART_SCRAPING_GUIDE.md**: Comprehensive guide (40+ pages)
+- **Examples**: Real-world use cases
+- **Best Practices**: Do's and Don'ts
+- **Troubleshooting**: Common issues và solutions
+- **Roadmap**: Future enhancements
+
+### 🐛 Bug Fixes
+- None (new feature release)
+
+### 📦 Dependencies
+- BeautifulSoup4 4.9.3 (Python 3.6 compatible)
+- lxml 5.4.0
+- validators 0.20.0
+- All existing dependencies maintained
+
+### 🚀 Performance
+- ⚡ 100 Q&A limit per page
+- 🔄 Real-time deduplication
+- 💾 Efficient JSON storage
+- 📊 Fast analytics tracking
+
+### 🎓 Migration Notes
+- **Backward Compatible**: Existing KB data works seamlessly
+- **No Breaking Changes**: All existing features unchanged
+- **Auto-Upgrade**: Existing entries get default metadata on next use
+- **No Manual Steps**: Deploy and go!
+
+---
+
 ## [2.0.0] - 2026-07-25 🎉 MAJOR UPDATE
 
 ### 🌟 Major Changes
