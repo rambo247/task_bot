@@ -4280,60 +4280,51 @@ def handle_user_input(message):
                 bot.reply_to(message, f"❌ {error}", reply_markup=markup)
             return
         
-        # ===== PREVIEW & CONFIRM - HỌC BỊ ĐỘNG =====
+        # ===== AUTO SAVE - Tự động lưu nguồn web =====
         content_length = data.get('content_length', 0)
         
-        # Save to temporary state for confirmation
-        user_states[user_id] = f"confirm_scrape_data||{url}"
+        # Lưu nguồn web tự động (không cần confirm)
+        if org_id not in web_sources:
+            web_sources[org_id] = []
         
-        # Build preview text - HỌC BỊ ĐỘNG
-        preview_text = f"✅ **NGUỒN WEB ĐÃ SẴN SÀNG**\n\n"
-        preview_text += f"🌐 URL: {url[:60]}\n"
-        preview_text += f"📄 Title: {data.get('title', 'N/A')[:60]}\n"
-        preview_text += f"📝 Description: {data.get('description', 'N/A')[:100]}\n"
-        preview_text += f"📊 Nội dung: {content_length:,} ký tự\n\n"
-        
-        preview_text += "🤖 **HỌC BỊ ĐỘNG (On-Demand)**\n"
-        preview_text += "✅ AI chưa trích xuất dữ liệu ngay\n"
-        preview_text += "✅ Khi bạn hỏi, AI sẽ tự tìm trong nguồn này\n"
-        preview_text += "✅ Trích xuất và trả lời chỉ khi cần\n"
-        preview_text += "✅ Tiết kiệm bộ nhớ và nhanh hơn\n\n"
-        
-        preview_text += "💡 **Ví dụ:**\n"
-        preview_text += "Bạn hỏi: \"Công ty làm gì?\"\n"
-        preview_text += "→ AI tìm trong nguồn này\n"
-        preview_text += "→ Trích xuất câu trả lời\n"
-        preview_text += "→ Trả lời với trích dẫn nguồn\n\n"
-        
-        preview_text += "❓ **Bạn có muốn thêm nguồn web này?**"
-        
-        # Store scraped data temporarily
-        if not hasattr(user_states, '_temp_scraped_data'):
-            user_states._temp_scraped_data = {}
-        user_states._temp_scraped_data[user_id] = {
+        web_sources[org_id].append({
+            'id': generate_id('source'),
             'url': url,
-            'data': data,
-            'org_id': org_id
-        }
+            'title': data.get('title', 'Untitled'),
+            'description': data.get('description', ''),
+            'raw_content': data.get('raw_content', ''),
+            'content_length': content_length,
+            'type': 'web_passive',
+            'added_at': datetime.utcnow().isoformat(),
+            'status': 'ready',
+            'added_by': user_id
+        })
+        save_data()
         
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        btn_yes = types.InlineKeyboardButton("✅ Có, thêm nguồn web", callback_data="scrape_confirm_yes")
-        btn_no = types.InlineKeyboardButton("❌ Không, hủy bỏ", callback_data="scrape_confirm_no")
-        markup.add(btn_yes, btn_no)
+        # Clear state
+        user_states[user_id] = None
         
-        btn_back = types.InlineKeyboardButton("🔙 Menu Import", callback_data="org_import")
-        markup.add(btn_back)
+        # Success message - Ngắn gọn và quay về menu
+        result_text = f"✅ **ĐÃ THÊM NGUỒN WEB**\n\n"
+        result_text += f"📄 {data.get('title', 'Untitled')[:60]}\n"
+        result_text += f"📊 {content_length:,} ký tự\n\n"
+        result_text += f"🤖 AI sẽ tự tìm khi bạn hỏi câu hỏi!"
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_more = types.InlineKeyboardButton("➕ Thêm nguồn khác", callback_data="import_web")
+        btn_back = types.InlineKeyboardButton("🔙 Import Menu", callback_data="org_import")
+        markup.add(btn_more, btn_back)
         
         try:
             bot.edit_message_text(
-                preview_text,
+                result_text,
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
                 reply_markup=markup,
                 parse_mode='Markdown'
             )
         except:
-            bot.reply_to(message, preview_text, reply_markup=markup, parse_mode='Markdown')
+            bot.reply_to(message, result_text, reply_markup=markup, parse_mode='Markdown')
     
     # ===== END ENTERPRISE STATES =====
 
