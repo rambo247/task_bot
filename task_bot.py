@@ -529,9 +529,311 @@ def reminder_checker():
             print(f"Error in reminder_checker: {e}")
             time.sleep(30)
 
-# Khởi động background thread
+# ============= AUTO LEARNING WORKER =============
+
+def auto_learning_worker():
+    """Background thread tự động học từ web sources"""
+    print("🤖 Auto-learning worker started")
+    
+    while True:
+        try:
+            time.sleep(300)  # Check mỗi 5 phút xem có org nào cần update
+            
+            # Kiểm tra từng organization có web sources
+            for org_id, sources_list in list(web_sources.items()):
+                if not sources_list:
+                    continue
+                
+                # Kiểm tra setting của org
+                org = organizations.get(org_id)
+                if not org:
+                    continue
+                
+                settings = org.get('settings', {})
+                if not settings.get('auto_learning', False):
+                    continue  # Skip nếu auto-learning bị tắt
+                
+                learning_frequency = settings.get('learning_frequency', 3600)  # Default 1 hour
+                
+                # Lấy owner của org để notify
+                owner_id = org.get('owner_user_id')
+                if not owner_id:
+                    continue
+                
+                new_items_count = 0
+                
+                # Scrape và extract từ mỗi source
+                for source in sources_list:
+                    try:
+                        url = source.get('url')
+                        if not url:
+                            continue
+                        
+                        # Check last scraped time (không scrape quá thường xuyên)
+                        last_scraped = source.get('last_scraped')
+                        if last_scraped:
+                            try:
+                                last_time = datetime.fromisoformat(last_scraped)
+                                time_since_scrape = (datetime.utcnow() - last_time).total_seconds()
+                                if time_since_scrape < learning_frequency:
+                                    continue  # Skip nếu chưa đến lúc scrape
+                            except:
+                                pass
+                        
+                        print(f"Auto-learning: Scraping {url[:50]}...")
+                        
+                        # Scrape website
+                        data, error = scrape_website(url)
+                        if error or not data:
+                            source['status'] = 'failed'
+                            source['last_error'] = error
+                            continue
+                        
+                        # Update source với raw content
+                        source['raw_content'] = data.get('raw_content')
+                        source['title'] = data.get('title')
+                        source['description'] = data.get('description')
+                        source['last_scraped'] = datetime.utcnow().isoformat()
+                        source['status'] = 'success'
+                        
+                        # Auto-extract FAQ và important content
+                        extracted_items = auto_extract_knowledge(data, url)
+                        
+                        if extracted_items:
+                            # Add to knowledge base cho owner
+                            for item in extracted_items:
+                                add_to_knowledge_base(
+                                    owner_id,
+                                    item['question'],
+                                    item['answer'],
+                                    source='auto_learn',
+                                    metadata={
+                                        'url': url,
+                                        'title': data.get('title'),
+                                        'auto_extracted': True,
+                                        'confidence': item.get('confidence', 0.7)
+                                    }
+                                )
+                                new_items_count += 1
+                            
+                            print(f"Auto-learned {len(extracted_items)} items from {url[:50]}")
+                        
+                        save_data()
+                        time.sleep(2)  # Delay giữa các request
+                        
+                    except Exception as e:
+                        print(f"Error auto-learning from {url[:50]}: {e}")
+                        continue
+                
+                # Notify user về dữ liệu mới
+                if new_items_count > 0:
+                    try:
+                        chat_id = user_chat_mapping.get(owner_id)
+                        if chat_id:
+                            notify_text = (
+                                f"🤖 **HỌC TỰ ĐỘNG**\n\n"
+                                f"Bot đã tự động học được **{new_items_count} mục** "
+                                f"mới từ web sources của {org['name']}!\n\n"
+                                f"💡 Bạn có thể hỏi bot về những thông tin mới này."
+                            )
+                            
+                            markup = types.InlineKeyboardMarkup()
+                            btn_kb = types.InlineKeyboardButton("📚 Xem KB", callback_data="kb_list")
+                            btn_menu = types.InlineKeyboardButton("🏠 Menu", callback_data="menu_main")
+                            markup.add(btn_kb, btn_menu)
+                            
+                            bot.send_message(chat_id, notify_text, reply_markup=markup, parse_mode='Markdown')
+                            print(f"Notified user {owner_id} about {new_items_count} new items")
+                    except Exception as e:
+                        print(f"Error notifying user: {e}")
+            
+        except Exception as e:
+            print(f"Error in auto_learning_worker: {e}")
+            time.sleep(60)
+
+def auto_extract_knowledge(scraped_data, url):
+    """Tự động extract kiến thức từ raw content"""
+    if not scraped_data or 'raw_content' not in scraped_data:
+        return []
+    
+    raw_content = scraped_data['raw_content']
+    title = scraped_data.get('title', '')
+    extracted = []
+    
+    # 1. Extract FAQ sections
+    faq_items = extract_faq_from_content(raw_content)
+    extracted.extend(faq_items)
+    
+    # 2. Extract heading-based Q&A
+    heading_items = extract_headings_qa(raw_content, title)
+    extracted.extend(heading_items)
+    
+    # 3. Extract key facts (definitions, statistics, important points)
+    fact_items = extract_key_facts(raw_content, title)
+    extracted.extend(fact_items)
+    
+    # Deduplicate và limit
+    seen = set()
+    unique_items = []
+    for item in extracted:
+        key = item['question'].lower().strip()
+        if key not in seen and len(unique_items) < 20:  # Limit 20 items per scrape
+            seen.add(key)
+            unique_items.append(item)
+    
+    return unique_items
+
+def extract_faq_from_content(content):
+    """Extract FAQ từ content"""
+    items = []
+    lines = content.split('\n')
+    
+    in_faq = False
+    current_q = None
+    current_a = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Detect FAQ section
+        if any(marker in line.lower() for marker in ['faq', 'câu hỏi', 'q&a', 'questions']):
+            in_faq = True
+            continue
+        
+        if in_faq:
+            # Detect question (Q:, Câu hỏi:, 1., etc.)
+            if (line.startswith(('Q:', 'Q.', 'Câu hỏi:', '?')) or 
+                (line[0].isdigit() and '?' in line)):
+                
+                # Save previous Q&A
+                if current_q and current_a:
+                    items.append({
+                        'question': current_q,
+                        'answer': ' '.join(current_a).strip(),
+                        'confidence': 0.9
+                    })
+                
+                # Start new question
+                current_q = line.lstrip('Q:.? 0123456789').strip()
+                current_a = []
+            
+            # Detect answer (A:, Trả lời:, etc.)
+            elif line.startswith(('A:', 'A.', 'Trả lời:', 'Answer:')):
+                current_a = [line.lstrip('A:.Trả lời: Answer:').strip()]
+            
+            # Continue answer
+            elif current_q and len(line) > 20:
+                current_a.append(line)
+            
+            # Exit FAQ section
+            elif len(items) > 0 and not any(c in line for c in ['?', 'Q', 'A']):
+                in_faq = False
+    
+    # Save last Q&A
+    if current_q and current_a:
+        items.append({
+            'question': current_q,
+            'answer': ' '.join(current_a).strip(),
+            'confidence': 0.9
+        })
+    
+    return items
+
+def extract_headings_qa(content, title):
+    """Extract Q&A từ headings và content"""
+    items = []
+    lines = content.split('\n')
+    
+    current_heading = None
+    current_content = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Detect heading (short line, all caps hoặc title case)
+        if (len(line) < 100 and 
+            (line.isupper() or line.istitle()) and 
+            not line.endswith(('.', '!', '?'))):
+            
+            # Save previous section
+            if current_heading and current_content:
+                content_text = ' '.join(current_content).strip()
+                if len(content_text) > 50:
+                    # Convert heading to question
+                    question = f"{current_heading}?"
+                    if not question.endswith('?'):
+                        question = f"Thông tin về {current_heading.lower()}?"
+                    
+                    items.append({
+                        'question': question,
+                        'answer': content_text[:500],  # Limit 500 chars
+                        'confidence': 0.7
+                    })
+            
+            # Start new section
+            current_heading = line
+            current_content = []
+        
+        # Collect content
+        elif current_heading and len(line) > 20:
+            current_content.append(line)
+            if len(current_content) > 5:  # Limit paragraphs
+                break
+    
+    # Save last section
+    if current_heading and current_content:
+        content_text = ' '.join(current_content).strip()
+        if len(content_text) > 50:
+            question = f"Thông tin về {current_heading.lower()}?"
+            items.append({
+                'question': question,
+                'answer': content_text[:500],
+                'confidence': 0.7
+            })
+    
+    return items[:5]  # Limit 5 heading-based items
+
+def extract_key_facts(content, title):
+    """Extract các thông tin quan trọng"""
+    items = []
+    lines = content.split('\n')
+    
+    # Look for definition patterns
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if len(line) < 20 or len(line) > 200:
+            continue
+        
+        # Detect definitions (là, nghĩa là, được định nghĩa, is defined as, etc.)
+        if any(marker in line.lower() for marker in [' là ', ' nghĩa là ', ' được định nghĩa', 'is defined', 'means']):
+            # Try to split into term and definition
+            for marker in [' là ', ' nghĩa là ', ' được định nghĩa là ']:
+                if marker in line.lower():
+                    parts = line.split(marker, 1)
+                    if len(parts) == 2:
+                        term = parts[0].strip()
+                        definition = parts[1].strip()
+                        
+                        if len(term) > 3 and len(definition) > 20:
+                            items.append({
+                                'question': f"{term} là gì?",
+                                'answer': definition,
+                                'confidence': 0.8
+                            })
+                            break
+    
+    return items[:5]  # Limit 5 facts
+
+# Khởi động background threads
 reminder_thread = threading.Thread(target=reminder_checker, daemon=True)
 reminder_thread.start()
+
+auto_learning_thread = threading.Thread(target=auto_learning_worker, daemon=True)
+auto_learning_thread.start()
 
 def show_main_menu(user_id, message_text="👋 Xin chào! Tôi là trợ lý đa chức năng của bạn."):
     """Hiển thị menu chính với các category"""
@@ -1378,7 +1680,9 @@ def create_organization(user_id, org_name):
         'settings': {
             'private': True,
             'auto_import': True,
-            'web_scraping': ENTERPRISE_ENABLED
+            'web_scraping': ENTERPRISE_ENABLED,
+            'auto_learning': True,  # Tự động học từ web
+            'learning_frequency': 3600  # Mỗi 1 giờ (seconds)
         }
     }
     
