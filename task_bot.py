@@ -218,6 +218,14 @@ def load_data():
                         
                         # Assign to global variables
                         if key == 'user_tasks':
+                            # Parse datetime strings in remind_time
+                            for user_id, tasks in data.items():
+                                for task in tasks:
+                                    if task.get('remind_time') and isinstance(task['remind_time'], str):
+                                        try:
+                                            task['remind_time'] = datetime.strptime(task['remind_time'], "%Y-%m-%d %H:%M:%S")
+                                        except:
+                                            task['remind_time'] = None
                             user_tasks = data
                         elif key == 'user_timezones':
                             user_timezones = data
@@ -467,6 +475,15 @@ def reminder_checker():
                 for task in tasks:
                     if task.get('remind_time') and not task.get('reminded'):
                         remind_time = task['remind_time']  # Đã lưu ở UTC
+                        
+                        # Parse string to datetime if needed (for safety)
+                        if isinstance(remind_time, str):
+                            try:
+                                remind_time = datetime.strptime(remind_time, "%Y-%m-%d %H:%M:%S")
+                                task['remind_time'] = remind_time  # Update to datetime object
+                            except:
+                                continue  # Skip if parse fails
+                        
                         # Kiểm tra nếu đã đến giờ nhắc (trong vòng 1 phút)
                         if remind_time <= current_time < remind_time + timedelta(minutes=1):
                             try:
