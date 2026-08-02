@@ -4198,6 +4198,7 @@ def handle_user_input(message):
             markup = types.InlineKeyboardMarkup()
             btn_back = types.InlineKeyboardButton("🔙 Menu", callback_data="category_enterprise")
             markup.add(btn_back)
+            user_states[user_id] = None  # Clear state
             bot.reply_to(message, "⚠️ Lỗi: Không tìm thấy organization!", reply_markup=markup)
             return
         
@@ -4212,11 +4213,18 @@ def handle_user_input(message):
             bot.reply_to(message, "⚠️ URL không hợp lệ! Nhập lại:\n\n💡 Gõ /cancel để hủy", reply_markup=markup)
             return
         
-        # Processing message
-        processing_msg = bot.reply_to(message, "🌐 Đang tải và kiểm tra website...")
+        # Clear state immediately so user can /cancel while scraping
+        user_states[user_id] = None
         
-        # Scrape (CHỈ LẤY RAW CONTENT - KHÔNG EXTRACT Q&A)
-        data, error = scrape_website(url)
+        # Processing message
+        processing_msg = bot.reply_to(message, "🌐 Đang tải và kiểm tra website...\n\n💡 Gõ /cancel nếu muốn hủy")
+        
+        # Scrape with error handling
+        try:
+            data, error = scrape_website(url)
+        except Exception as e:
+            error = f"Lỗi không xác định: {str(e)[:100]}"
+            data = None
         
         if error:
             markup = types.InlineKeyboardMarkup()
