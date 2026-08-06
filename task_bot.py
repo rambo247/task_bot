@@ -13,6 +13,9 @@ from datetime import datetime, timedelta
 from telebot import types
 from dotenv import load_dotenv
 
+# Import AI Task Agent
+from ai_task_agent import AITaskAgent
+
 # Enterprise features imports
 try:
     from bs4 import BeautifulSoup
@@ -137,6 +140,14 @@ web_sources = {}
 
 # Proactive AI suggestions
 proactive_suggestions = {}  # user_id -> [{'type': 'missing_data', 'message': '...', 'actions': [...]}]
+
+# ============= AI TASK AGENT =============
+# Initialize AI Task Agent
+ai_task_agent = AITaskAgent()
+
+# Lưu conversation context cho AI Agent
+# user_id -> {'task': {...}, 'state': 'collecting', 'last_update': timestamp}
+ai_conversation_context = {}
 
 # ============= JSON PERSISTENCE =============
 import os
@@ -895,8 +906,10 @@ def show_tasks_menu(user_id):
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     btn_add = types.InlineKeyboardButton("➕ Thêm task", callback_data="menu_add")
+    btn_smart = types.InlineKeyboardButton("🤖 AI Smart Add", callback_data="menu_smart_add")
     btn_list = types.InlineKeyboardButton("📋 Xem tất cả", callback_data="menu_list")
-    markup.add(btn_add, btn_list)
+    markup.add(btn_add, btn_smart)
+    markup.add(btn_list)
     
     if task_count > 0:
         btn_pending = types.InlineKeyboardButton("⏳ Tasks đang làm", callback_data="tasks_pending")
@@ -1149,6 +1162,127 @@ def add_task(message):
         f"✅ Đã thêm: '{task_content}'",
         reply_markup=markup
     )
+
+# ============= AI SMART TASK MANAGEMENT =============
+
+@bot.message_handler(commands=['smart_add', 'ai_add'])
+def smart_add_task(message):
+    """
+    Thêm task thông minh với AI Agent
+    AI sẽ hỏi bổ sung thông tin nếu thiếu
+    """
+    print(f"Received /smart_add from chat_id: {message.chat.id}, user_id: {message.from_user.id}")
+    user_id = get_user_id(message)
+    chat_id = message.chat.id
+    update_user_chat_mapping(message)
+    
+    # Lấy nội dung sau lệnh
+    content = message.text.split(maxsplit=1)
+    message_text = content[1].strip() if len(content) > 1 else ""
+    
+    if not message_text:
+        # Hướng dẫn sử dụng
+        user_states[user_id] = "ai_collecting_task"
+        ai_conversation_context[user_id] = {'task': {}, 'state': 'collecting', 'last_update': datetime.now()}
+        
+        help_msg = (
+            "🤖 *AI Task Manager - Chế độ thông minh*\n\n"
+            "Tôi sẽ giúp bạn tạo công việc một cách chi tiết!\n\n"
+            "📝 Bạn có thể:\n"
+            "• Nhập đầy đủ thông tin ngay\n"
+            "• Nhập từng phần, tôi sẽ hỏi thêm\n\n"
+            "📋 Thông tin cần có:\n"
+            "1️⃣ Tên công việc\n"
+            "2️⃣ Người phụ trách\n"
+            "3️⃣ Deadline (hạn chót)\n"
+            "4️⃣ Nhóm/Dự án (tùy chọn)\n"
+            "5️⃣ Trạng thái (tùy chọn)\n"
+            "6️⃣ Chi tiết (tùy chọn)\n\n"
+            "💡 Ví dụ:\n"
+            "```\n"
+            "Tên: Thiết kế landing page\n"
+            "Người làm: Nguyễn Văn A\n"
+            "Deadline: 15/08/2026\n"
+            "Nhóm: Marketing\n"
+            "```\n\n"
+            "Hoặc đơn giản:\n"
+            "`Tạo chiến dịch marketing mới`\n\n"
+            "➡️ Hãy bắt đầu bằng cách cho tôi biết công việc của bạn!"
+        )
+        bot.reply_to(message, help_msg, parse_mode='Markdown')
+        return
+    
+    # Process với AI Agent
+    result = ai_task_agent.process_message(message_text)
+    
+    if result['action'] == 'save_task':
+        # Đủ thông tin - lưu task
+        save_ai_task(user_id, result['task'])
+        
+        # Send confirmation
+        bot.reply_to(message, result['ask_message'], parse_mode='Markdown')
+        
+        # Clear conversation context
+        if user_id in ai_conversation_context:
+            del ai_conversation_context[user_id]
+        if user_id in user_states:
+            del user_states[user_id]
+    
+    else:
+        # Thiếu thông tin - hỏi thêm
+        user_states[user_id] = "ai_collecting_task"
+        ai_conversation_context[user_id] = {
+            'task': result['task'],
+            'state': 'collecting',
+            'last_update': datetime.now()
+        }
+        
+        bot.reply_to(message, result['ask_message'], parse_mode='Markdown')
+
+
+def save_ai_task(user_id, task_data):
+    """
+    Lưu task từ AI Agent vào database
+    Convert format từ AI Agent sang format của bot
+    """
+    if user_id not in user_tasks:
+        user_tasks[user_id] = []
+    
+    # Build content string cho compatibility với existing system
+    content = f"📋 {task_data['task_name']}\n"
+    content += f"👤 Phụ trách: {task_data['assignee']}\n"
+    content += f"📅 Deadline: {task_data['deadline']}\n"
+    content += f"🏷️ Nhóm: {task_data['task_group']}\n"
+    content += f"⚡ Trạng thái: {task_data['status']}\n"
+    content += f"📈 Tiến độ: {task_data['progress_percent']}%"
+    
+    if task_data.get('details'):
+        content += f"\n📝 {task_data['details']}"
+    
+    # Create task in existing format
+    new_task = {
+        'content': content,
+        'done': task_data['status'] == 'Hoàn thành',
+        'remind_time': None,
+        'reminded': False,
+        # Additional AI fields
+        'ai_task': True,
+        'task_code': task_data['task_code'],
+        'task_group': task_data['task_group'],
+        'task_name': task_data['task_name'],
+        'assignee': task_data['assignee'],
+        'deadline': task_data['deadline'],
+        'progress_percent': task_data['progress_percent'],
+        'status': task_data['status'],
+        'details': task_data.get('details', '')
+    }
+    
+    user_tasks[user_id].append(new_task)
+    save_data()
+    
+    print(f"✅ Saved AI task for user {user_id}: {task_data['task_code']} - {task_data['task_name']}")
+
+# ============= END AI SMART TASK MANAGEMENT =============
 
 # Lệnh /list để xem danh sách task
 @bot.message_handler(commands=['list'])
@@ -2268,6 +2402,36 @@ def callback_handler(call):
             chat_id=chat_id,
             message_id=call.message.message_id,
             reply_markup=markup
+        )
+        bot.answer_callback_query(call.id)
+    
+    # Thêm công việc với AI Agent
+    elif call.data == "menu_smart_add":
+        markup = types.InlineKeyboardMarkup()
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_main")
+        markup.add(btn_cancel)
+        
+        user_states[user_id] = "ai_collecting_task"
+        ai_conversation_context[user_id] = {'task': {}, 'state': 'collecting', 'last_update': datetime.now()}
+        
+        help_msg = (
+            "🤖 *AI Task Manager - Chế độ thông minh*\n\n"
+            "Tôi sẽ giúp bạn tạo công việc chi tiết!\n\n"
+            "📋 Thông tin cần có:\n"
+            "• Tên công việc\n"
+            "• Người phụ trách\n"
+            "• Deadline\n\n"
+            "💡 Ví dụ:\n"
+            "`Thiết kế landing page cho Nguyễn Văn A, deadline 15/08`\n\n"
+            "➡️ Hãy cho tôi biết công việc của bạn!"
+        )
+        
+        bot.edit_message_text(
+            help_msg,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
         )
         bot.answer_callback_query(call.id)
     
@@ -3668,8 +3832,53 @@ def handle_user_input(message):
     state = user_states[user_id]
     print(f"Handling user input, state: {state}, text: {message.text}")
     
+    # ============= AI COLLECTING TASK STATE =============
+    if state == "ai_collecting_task":
+        # User đang trong conversation với AI Agent
+        message_text = message.text.strip()
+        
+        # Get conversation context
+        context = ai_conversation_context.get(user_id, {}).get('task', {})
+        
+        # Process with AI Agent
+        result = ai_task_agent.process_message(message_text, context)
+        
+        if result['action'] == 'save_task':
+            # Đủ thông tin - lưu task
+            save_ai_task(user_id, result['task'])
+            
+            # Send confirmation
+            bot.reply_to(message, result['ask_message'], parse_mode='Markdown')
+            
+            # Clear state
+            if user_id in ai_conversation_context:
+                del ai_conversation_context[user_id]
+            user_states[user_id] = None
+            
+            # Show menu
+            markup = types.InlineKeyboardMarkup()
+            btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
+            btn_add = types.InlineKeyboardButton("➕ Thêm task khác", callback_data="menu_smart_add")
+            btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+            markup.add(btn_list)
+            markup.add(btn_add, btn_menu)
+            
+            bot.send_message(chat_id, "Bạn muốn làm gì tiếp theo?", reply_markup=markup)
+        
+        else:
+            # Thiếu thông tin - hỏi tiếp
+            ai_conversation_context[user_id] = {
+                'task': result['task'],
+                'state': 'collecting',
+                'last_update': datetime.now()
+            }
+            
+            bot.reply_to(message, result['ask_message'], parse_mode='Markdown')
+    
+    # ============= END AI COLLECTING TASK STATE =============
+    
     # Thêm task
-    if state == "waiting_task_content":
+    elif state == "waiting_task_content":
         task_content = message.text.strip()
         if chat_id not in user_tasks:
             user_tasks[user_id] = []
