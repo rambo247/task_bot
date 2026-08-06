@@ -1059,14 +1059,15 @@ def send_help(message):
         "📝 **LỆNH NHANH:**\n"
         "   • /add [nội dung] - Thêm task\n"
         "   • /done [số] - Hoàn thành task\n"
-        "   • /progress [số] [%] - Cập nhật tiến độ\n"
+        "   • /progress [số] [%] [ghi chú] - Cập nhật tiến độ\n"
         "   • /list - Xem danh sách\n"
         "   • /smart_add - Thêm task bằng AI\n\n"
         "💡 **MẸO:**\n"
         "• Dùng nút menu để thao tác nhanh\n"
         "• Voice: Ghi âm cuộc họp → File văn bản\n"
         "• AI: Nói tự nhiên → Task + Nhắc nhở\n"
-        "• Progress: Theo dõi tiến độ từng task\n"
+        "• Progress: Theo dõi tiến độ + Ghi chú chi tiết\n"
+        "• Nút 📝: Xem lịch sử cập nhật\n"
         "• Gửi /start để quay về menu chính"
     )
     
@@ -1155,7 +1156,8 @@ def add_task(message):
         'done': False,
         'remind_time': None,
         'reminded': False,
-        'progress_percent': 0
+        'progress_percent': 0,
+        'progress_updates': []
     })
     save_data()
     
@@ -1333,18 +1335,21 @@ def update_progress(message):
         return
     
     try:
-        parts = message.text.split()
+        # Parse: /progress 1 50 [optional note]
+        parts = message.text.split(maxsplit=3)
+        
         if len(parts) < 3:
             bot.reply_to(message, 
                 "⚠️ Vui lòng nhập đúng định dạng:\n\n"
-                "/progress [số] [%]\n\n"
+                "/progress [số] [%] [ghi chú]\n\n"
                 "Ví dụ:\n"
                 "/progress 1 50\n"
-                "/progress 2 75")
+                "/progress 1 50 Đã hoàn thành phân tích")
             return
         
         task_number = int(parts[1])
         progress = int(parts[2])
+        note = parts[3] if len(parts) == 4 else None
         
         if task_number < 1 or task_number > len(user_tasks[user_id]):
             bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[user_id])}")
@@ -1354,9 +1359,37 @@ def update_progress(message):
             bot.reply_to(message, "⚠️ Tiến độ phải từ 0 đến 100%")
             return
         
-        # Update progress
         task_idx = task_number - 1
+        
+        # If no note provided, ask for it
+        if note is None:
+            user_states[user_id] = f"progress_note_{task_idx}_{progress}"
+            
+            markup = types.InlineKeyboardMarkup()
+            btn_skip = types.InlineKeyboardButton("⏭️ Bỏ qua (không ghi chú)", callback_data=f"skip_progress_note_{task_idx}_{progress}")
+            markup.add(btn_skip)
+            
+            bot.reply_to(message,
+                f"📝 Nhập ghi chú cho cập nhật này:\n\n"
+                f"(Hoặc nhấn nút bỏ qua)",
+                reply_markup=markup)
+            return
+        
+        # Has note - update directly
+        old_progress = user_tasks[user_id][task_idx].get('progress_percent', 0)
         user_tasks[user_id][task_idx]['progress_percent'] = progress
+        
+        # Initialize progress_updates if not exists
+        if 'progress_updates' not in user_tasks[user_id][task_idx]:
+            user_tasks[user_id][task_idx]['progress_updates'] = []
+        
+        # Add update record
+        user_tasks[user_id][task_idx]['progress_updates'].append({
+            'timestamp': datetime.now().isoformat(),
+            'progress': progress,
+            'old_progress': old_progress,
+            'note': note
+        })
         
         # Auto mark as done if 100%
         if progress == 100:
@@ -1366,15 +1399,19 @@ def update_progress(message):
         
         task_content = user_tasks[user_id][task_idx]['content']
         bot.reply_to(message, 
-            f"📊 Đã cập nhật tiến độ!\n\n"
+            f"✅ **Đã cập nhật tiến độ!**\n\n"
             f"📌 Task: {task_content}\n"
-            f"📈 Tiến độ: {get_progress_bar(progress)}")
+            f"📊 Tiến độ: {get_progress_bar(progress)}\n"
+            f"💬 Ghi chú: {note}",
+            parse_mode='Markdown')
         
     except (IndexError, ValueError) as e:
         bot.reply_to(message, 
             "⚠️ Lỗi định dạng!\n\n"
-            "Sử dụng: /progress [số] [%]\n"
-            "Ví dụ: /progress 1 50")
+            "Sử dụng: /progress [số] [%] [ghi chú]\n"
+            "Ví dụ:\n"
+            "/progress 1 50\n"
+            "/progress 1 75 Đã test xong")
 
 # Lệnh /remind để đặt nhắc nhở
 @bot.message_handler(commands=['remind'])
@@ -3553,16 +3590,115 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
             return
         
-        # Update progress
+        # Set state to ask for note
+        user_states[user_id] = f"progress_note_{task_idx}_{progress}"
+        
+        task_content = user_tasks[user_id][task_idx]['content']
+        markup = types.InlineKeyboardMarkup()
+        btn_skip = types.InlineKeyboardButton("⏭️ Bỏ qua (không ghi chú)", callback_data=f"skip_progress_note_{task_idx}_{progress}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_skip)
+        markup.add(btn_cancel)
+        
+        bot.edit_message_text(
+            f"📝 **THÊM GHI CHÚ CẬP NHẬT**\n\n"
+            f"Task: {task_content[:50]}\n"
+            f"Tiến độ: {progress}%\n\n"
+            f"Nhập nội dung chi tiết về cập nhật này:\n"
+            f"(Ví dụ: Đã hoàn thành phân tích requirements)",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id)
+    
+    # Skip progress note
+    elif call.data.startswith("skip_progress_note_"):
+        parts = call.data.split("_")
+        task_idx = int(parts[3])
+        progress = int(parts[4])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
+            return
+        
+        # Update progress without note
+        old_progress = user_tasks[user_id][task_idx].get('progress_percent', 0)
         user_tasks[user_id][task_idx]['progress_percent'] = progress
+        
+        # Initialize progress_updates if not exists
+        if 'progress_updates' not in user_tasks[user_id][task_idx]:
+            user_tasks[user_id][task_idx]['progress_updates'] = []
+        
+        # Add update record
+        user_tasks[user_id][task_idx]['progress_updates'].append({
+            'timestamp': datetime.now().isoformat(),
+            'progress': progress,
+            'old_progress': old_progress,
+            'note': None
+        })
         
         # Auto mark as done if 100%
         if progress == 100:
             user_tasks[user_id][task_idx]['done'] = True
         
+        # Clear state
+        user_states[user_id] = None
+        
         save_data()
         bot.answer_callback_query(call.id, f"📊 Đã cập nhật: {progress}%")
         show_task_list(user_id, chat_id, call.message.message_id)
+    
+    # View progress detail
+    elif call.data.startswith("task_detail_"):
+        parts = call.data.split("_")
+        task_idx = int(parts[2])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
+            return
+        
+        task = user_tasks[user_id][task_idx]
+        updates = task.get('progress_updates', [])
+        
+        if not updates:
+            bot.answer_callback_query(call.id, "Chưa có lịch sử cập nhật")
+            return
+        
+        # Build history text
+        text = f"📝 **LỊCH SỬ CẬP NHẬT TIẾN ĐỘ**\n\n"
+        text += f"📌 Task: {task['content']}\n"
+        text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
+        text += f"📜 **Lịch sử ({len(updates)} cập nhật):**\n\n"
+        
+        # Show last 10 updates (newest first)
+        for idx, update in enumerate(reversed(updates[-10:])):
+            timestamp = datetime.fromisoformat(update['timestamp'])
+            user_time = get_user_time(user_id, timestamp)
+            time_str = user_time.strftime("%d/%m %H:%M")
+            
+            old = update.get('old_progress', 0)
+            new = update['progress']
+            
+            text += f"{len(updates)-idx}. {time_str}\n"
+            text += f"   {old}% → {new}% (+{new-old}%)\n"
+            if update.get('note'):
+                text += f"   💬 {update['note']}\n"
+            text += "\n"
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
+        markup.add(btn_back)
+        
+        bot.edit_message_text(
+            text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id)
     
     # Calendar picker handlers
     elif call.data.startswith("calendar_"):
@@ -3940,6 +4076,9 @@ def show_task_list(user_id, chat_id, message_id=None):
                 btn_row.append(types.InlineKeyboardButton(f"✅ {idx+1}", callback_data=f"task_done_{idx}"))
                 btn_row.append(types.InlineKeyboardButton(f"📊 {idx+1}", callback_data=f"task_progress_{idx}"))
                 btn_row.append(types.InlineKeyboardButton(f"⏰ {idx+1}", callback_data=f"task_remind_{idx}"))
+            # Nút xem chi tiết progress
+            if task.get('progress_updates'):
+                btn_row.append(types.InlineKeyboardButton(f"📝 {idx+1}", callback_data=f"task_detail_{idx}"))
             btn_row.append(types.InlineKeyboardButton(f"🗑️ {idx+1}", callback_data=f"task_delete_{idx}"))
             markup.row(*btn_row)
         
@@ -4020,7 +4159,8 @@ def handle_user_input(message):
             'done': False,
             'remind_time': None,
             'reminded': False,
-            'progress_percent': 0
+            'progress_percent': 0,
+            'progress_updates': []
         })
         save_data()
         
@@ -4039,6 +4179,62 @@ def handle_user_input(message):
             f"✅ Đã thêm: '{task_content}'\n\n"
             f"Bạn muốn làm gì tiếp theo?",
             reply_markup=markup
+        )
+    
+    # Progress note input
+    elif state.startswith("progress_note_"):
+        state_parts = state.split("_")
+        task_idx = int(state_parts[2])
+        progress = int(state_parts[3])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.reply_to(message, "❌ Task không tồn tại!")
+            user_states[user_id] = None
+            return
+        
+        note = message.text.strip()
+        
+        # Update progress with note
+        old_progress = user_tasks[user_id][task_idx].get('progress_percent', 0)
+        user_tasks[user_id][task_idx]['progress_percent'] = progress
+        
+        # Initialize progress_updates if not exists
+        if 'progress_updates' not in user_tasks[user_id][task_idx]:
+            user_tasks[user_id][task_idx]['progress_updates'] = []
+        
+        # Add update record
+        user_tasks[user_id][task_idx]['progress_updates'].append({
+            'timestamp': datetime.now().isoformat(),
+            'progress': progress,
+            'old_progress': old_progress,
+            'note': note
+        })
+        
+        # Auto mark as done if 100%
+        if progress == 100:
+            user_tasks[user_id][task_idx]['done'] = True
+        
+        # Clear state
+        user_states[user_id] = None
+        
+        save_data()
+        
+        task_content = user_tasks[user_id][task_idx]['content']
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
+        btn_detail = types.InlineKeyboardButton("📝 Xem lịch sử", callback_data=f"task_detail_{task_idx}")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+        markup.add(btn_list)
+        markup.add(btn_detail, btn_menu)
+        
+        bot.reply_to(message,
+            f"✅ **Đã cập nhật tiến độ!**\n\n"
+            f"📌 Task: {task_content}\n"
+            f"📊 Tiến độ: {get_progress_bar(progress)}\n"
+            f"💬 Ghi chú: {note}",
+            reply_markup=markup,
+            parse_mode='Markdown'
         )
     
     # Nhập giờ thủ công (HH:MM)
