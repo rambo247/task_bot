@@ -3786,7 +3786,25 @@ def callback_handler(call):
         updates = task.get('progress_updates', [])
         
         if not updates:
-            bot.answer_callback_query(call.id, "Chưa có lịch sử cập nhật")
+            # Show message instead of just popup
+            text = f"📝 **LỊCH SỬ CẬP NHẬT TIẾN ĐỘ**\n\n"
+            text += f"📌 Task: {task['content']}\n"
+            text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
+            text += "ℹ️ Chưa có lịch sử cập nhật.\n\n"
+            text += "💡 _Hãy cập nhật tiến độ bằng cách nhấn nút 📊_"
+            
+            markup = types.InlineKeyboardMarkup()
+            btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
+            markup.add(btn_back)
+            
+            bot.edit_message_text(
+                text,
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=markup,
+                parse_mode='Markdown'
+            )
+            bot.answer_callback_query(call.id)
             return
         
         # Build history text
@@ -4289,10 +4307,9 @@ def show_task_list(user_id, chat_id, message_id=None):
             status = "✅" if task['done'] else "⏳"
             task_text = f"{idx+1}. {status} {task['content']}"
             
-            # Hiển thị progress bar nếu có
-            if task.get('progress_percent') is not None:
-                progress = task['progress_percent']
-                task_text += f"\n   📊 {get_progress_bar(progress)}"
+            # Hiển thị progress bar (luôn hiện, kể cả 0%)
+            progress = task.get('progress_percent', 0)
+            task_text += f"\n   📊 {get_progress_bar(progress)}"
             
             if task.get('remind_time'):
                 user_time = get_user_time(user_id, task['remind_time'])
@@ -4307,9 +4324,8 @@ def show_task_list(user_id, chat_id, message_id=None):
                 btn_row.append(types.InlineKeyboardButton(f"✅ {idx+1}", callback_data=f"task_done_{idx}"))
                 btn_row.append(types.InlineKeyboardButton(f"📊 {idx+1}", callback_data=f"task_progress_{idx}"))
                 btn_row.append(types.InlineKeyboardButton(f"⏰ {idx+1}", callback_data=f"task_remind_{idx}"))
-            # Nút xem chi tiết progress
-            if task.get('progress_updates'):
-                btn_row.append(types.InlineKeyboardButton(f"📝 {idx+1}", callback_data=f"task_detail_{idx}"))
+            # Nút xem chi tiết progress (luôn hiện, kể cả khi chưa có update)
+            btn_row.append(types.InlineKeyboardButton(f"📝 {idx+1}", callback_data=f"task_detail_{idx}"))
             btn_row.append(types.InlineKeyboardButton(f"🗑️ {idx+1}", callback_data=f"task_delete_{idx}"))
             markup.row(*btn_row)
         
