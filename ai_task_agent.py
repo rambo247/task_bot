@@ -68,14 +68,40 @@ class AITaskAgent:
         # Parse tin nhắn theo các pattern phổ biến
         message = message.strip()
         
+        # Xác định missing fields từ context để parse thông minh hơn
+        missing_fields = []
+        if context:
+            for field in self.REQUIRED_FIELDS:
+                if field not in context or not context[field]:
+                    missing_fields.append(field)
+        
         # Pattern 1: Key-value format (Tên: xxx, Người làm: yyy)
-        extracted.update(self._parse_key_value_format(message))
+        parsed_kv = self._parse_key_value_format(message)
         
         # Pattern 2: Natural language
-        extracted.update(self._parse_natural_language(message))
+        parsed_nl = self._parse_natural_language(message)
         
         # Pattern 3: Structured format (JSON-like)
-        extracted.update(self._parse_structured_format(message))
+        parsed_struct = self._parse_structured_format(message)
+        
+        # Pattern 4: Smart context-aware parsing for simple answers
+        parsed_simple = {}
+        # Nếu có missing fields và message ngắn, parse như câu trả lời đơn giản
+        if missing_fields and len(message.split()) <= 6:
+            # Chỉ parse simple nếu các pattern khác không match được gì quan trọng
+            has_explicit_match = (
+                any(k in parsed_kv for k in ['task_name', 'assignee', 'deadline']) or
+                any(k in parsed_struct for k in ['task_name', 'assignee', 'deadline'])
+            )
+            if not has_explicit_match:
+                parsed_simple = self._parse_simple_answer(message, missing_fields[0])
+        
+        # Merge results với priority: simple > key-value > structured > natural language
+        # Priority cao hơn sẽ override priority thấp hơn
+        extracted.update(parsed_nl)
+        extracted.update(parsed_struct)
+        extracted.update(parsed_kv)
+        extracted.update(parsed_simple)  # Highest priority cho simple answer
         
         # Normalize và validate dữ liệu
         extracted = self._normalize_data(extracted)
@@ -127,10 +153,6 @@ class AITaskAgent:
                 value = match.group(1).strip()
                 result[field] = value
         
-        # Nếu message ngắn và không có format đặc biệt, coi như task_name
-        if not result and len(message.split()) <= 10 and ':' not in message and ',' not in message:
-            result['task_name'] = message
-        
         # Detect mentions (người phụ trách)
         # Pattern: "nhờ @user" hoặc "giao cho Nguyễn Văn A"
         if 'assignee' not in result:
@@ -171,6 +193,48 @@ class AITaskAgent:
                 result.update(data)
         except:
             pass
+        
+        return result
+    
+    def _parse_simple_answer(self, message: str, field: str) -> Dict[str, Any]:
+        """
+        Parse câu trả lời đơn giản cho một field cụ thể
+        Dùng khi user trả lời trực tiếp câu hỏi của bot
+        
+        Args:
+            message: Câu trả lời của user
+            field: Field đang được hỏi ('task_name', 'assignee', 'deadline')
+        
+        Returns:
+            Dict với field đã được điền
+        """
+        result = {}
+        message = message.strip()
+        
+        # Bỏ qua nếu message quá dài (có thể là mô tả phức tạp)
+        if len(message.split()) > 15:
+            return result
+        
+        if field == 'task_name':
+            # Coi toàn bộ message là task name
+            result['task_name'] = message
+        
+        elif field == 'assignee':
+            # Loại bỏ các từ thừa như "là", "tên", "người làm"
+            assignee = re.sub(r'^(là|tên|người làm|người thực hiện|phụ trách)\s+', '', message, flags=re.IGNORECASE)
+            assignee = assignee.strip().lstrip('@')
+            result['assignee'] = assignee
+        
+        elif field == 'deadline':
+            # Parse date
+            deadline = self._normalize_date(message)
+            if deadline:
+                result['deadline'] = deadline
+        
+        elif field == 'task_group':
+            # Loại bỏ từ thừa
+            group = re.sub(r'^(nhóm|dự án|team|project)\s+', '', message, flags=re.IGNORECASE)
+            result['task_group'] = group.strip()
         
         return result
     
