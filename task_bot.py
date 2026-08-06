@@ -232,15 +232,25 @@ def load_data():
                         
                         # Assign to global variables
                         if key == 'user_tasks':
-                            # Parse datetime strings in remind_time
+                            # Parse datetime strings in remind_time & migrate progress fields
                             for user_id, tasks in data.items():
                                 for task in tasks:
+                                    # Migrate remind_time
                                     if task.get('remind_time') and isinstance(task['remind_time'], str):
                                         try:
                                             task['remind_time'] = datetime.strptime(task['remind_time'], "%Y-%m-%d %H:%M:%S")
                                         except:
                                             task['remind_time'] = None
+                                    
+                                    # Migrate progress_percent field (add if missing)
+                                    if 'progress_percent' not in task:
+                                        task['progress_percent'] = 0
+                                    
+                                    # Migrate progress_updates field (add if missing)
+                                    if 'progress_updates' not in task:
+                                        task['progress_updates'] = []
                             user_tasks = data
+                            print(f"   🔄 Migrated {sum(len(tasks) for tasks in data.values())} tasks with progress fields")
                         elif key == 'user_timezones':
                             user_timezones = data
                         elif key == 'user_states':
@@ -1278,6 +1288,8 @@ def save_ai_task(user_id, task_data):
         'done': task_data['status'] == 'Hoàn thành',
         'remind_time': None,
         'reminded': False,
+        'progress_percent': task_data['progress_percent'],
+        'progress_updates': [],  # Initialize progress tracking
         # Additional AI fields
         'ai_task': True,
         'task_code': task_data['task_code'],
@@ -1285,7 +1297,6 @@ def save_ai_task(user_id, task_data):
         'task_name': task_data['task_name'],
         'assignee': task_data['assignee'],
         'deadline': task_data['deadline'],
-        'progress_percent': task_data['progress_percent'],
         'status': task_data['status'],
         'details': task_data.get('details', '')
     }
@@ -1386,12 +1397,14 @@ def update_progress(message):
             user_tasks[user_id][task_idx]['progress_updates'] = []
         
         # Add update record
-        user_tasks[user_id][task_idx]['progress_updates'].append({
+        update_record = {
             'timestamp': datetime.now().isoformat(),
             'progress': progress,
             'old_progress': old_progress,
             'note': note
-        })
+        }
+        user_tasks[user_id][task_idx]['progress_updates'].append(update_record)
+        print(f"📝 [/progress command] Added update: {old_progress}% → {progress}% (total: {len(user_tasks[user_id][task_idx]['progress_updates'])})")
         
         # Auto mark as done if 100%
         if progress == 100:
@@ -3669,12 +3682,14 @@ def callback_handler(call):
             user_tasks[user_id][task_idx]['progress_updates'] = []
         
         # Add update record
-        user_tasks[user_id][task_idx]['progress_updates'].append({
+        update_record = {
             'timestamp': datetime.now().isoformat(),
             'progress': progress,
             'old_progress': old_progress,
             'note': None
-        })
+        }
+        user_tasks[user_id][task_idx]['progress_updates'].append(update_record)
+        print(f"📝 [skip_progress_note callback] Added update: {old_progress}% → {progress}% (total: {len(user_tasks[user_id][task_idx]['progress_updates'])})")
         
         # Auto mark as done if 100%
         if progress == 100:
@@ -3780,20 +3795,29 @@ def callback_handler(call):
         text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
         text += f"📜 **Lịch sử ({len(updates)} cập nhật):**\n\n"
         
-        # Show last 10 updates (newest first)
-        for idx, update in enumerate(reversed(updates[-10:])):
+        # Show ALL updates (newest first) - no limit
+        # If too many, show latest 20
+        display_updates = updates[-20:] if len(updates) > 20 else updates
+        start_index = len(updates) - len(display_updates)
+        
+        for idx, update in enumerate(reversed(display_updates)):
             timestamp = datetime.fromisoformat(update['timestamp'])
             user_time = get_user_time(user_id, timestamp)
             time_str = user_time.strftime("%d/%m %H:%M")
             
             old = update.get('old_progress', 0)
             new = update['progress']
+            delta = new - old
             
-            text += f"{len(updates)-idx}. {time_str}\n"
-            text += f"   {old}% → {new}% (+{new-old}%)\n"
+            actual_idx = len(updates) - idx
+            text += f"{actual_idx}. {time_str}\n"
+            text += f"   {old}% → {new}% ({'+' if delta >= 0 else ''}{delta}%)\n"
             if update.get('note'):
                 text += f"   💬 {update['note']}\n"
             text += "\n"
+        
+        if len(updates) > 20:
+            text += f"\n_Hiển thị 20/{len(updates)} cập nhật gần nhất_"
         
         markup = types.InlineKeyboardMarkup()
         btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
@@ -4514,12 +4538,14 @@ def handle_user_input(message):
             user_tasks[user_id][task_idx]['progress_updates'] = []
         
         # Add update record
-        user_tasks[user_id][task_idx]['progress_updates'].append({
+        update_record = {
             'timestamp': datetime.now().isoformat(),
             'progress': progress,
             'old_progress': old_progress,
             'note': note
-        })
+        }
+        user_tasks[user_id][task_idx]['progress_updates'].append(update_record)
+        print(f"📝 [progress_note handler] Added update: {old_progress}% → {progress}% (total: {len(user_tasks[user_id][task_idx]['progress_updates'])})")
         
         # Auto mark as done if 100%
         if progress == 100:
@@ -5518,7 +5544,9 @@ def handle_natural_language(message):
         'content': task_content,
         'done': False,
         'remind_time': None,
-        'reminded': False
+        'reminded': False,
+        'progress_percent': 0,
+        'progress_updates': []
     })
     save_data()
     
