@@ -1038,7 +1038,8 @@ def send_help(message):
         "📋 **Quản Lý Task** - Quản lý công việc\n"
         "   • Thêm/Xem/Sửa/Xóa tasks\n"
         "   • Đặt nhắc nhở với lịch\n"
-        "   • Lọc theo trạng thái\n\n"
+        "   • Lọc theo trạng thái\n"
+        "   • Cập nhật tiến độ (0-100%)\n\n"
         "🎤 **Công Cụ Voice** - Chuyển giọng nói thành văn bản\n"
         "   • Gửi voice → Nhận file .txt\n"
         "   • Hỗ trợ tiếng Việt & English\n"
@@ -1055,10 +1056,17 @@ def send_help(message):
         "   • Xóa dữ liệu\n"
         "   • Xem thống kê\n\n"
         "❓ **Trợ Giúp** - Hướng dẫn và hỗ trợ\n\n"
+        "📝 **LỆNH NHANH:**\n"
+        "   • /add [nội dung] - Thêm task\n"
+        "   • /done [số] - Hoàn thành task\n"
+        "   • /progress [số] [%] - Cập nhật tiến độ\n"
+        "   • /list - Xem danh sách\n"
+        "   • /smart_add - Thêm task bằng AI\n\n"
         "💡 **MẸO:**\n"
         "• Dùng nút menu để thao tác nhanh\n"
         "• Voice: Ghi âm cuộc họp → File văn bản\n"
         "• AI: Nói tự nhiên → Task + Nhắc nhở\n"
+        "• Progress: Theo dõi tiến độ từng task\n"
         "• Gửi /start để quay về menu chính"
     )
     
@@ -1146,7 +1154,8 @@ def add_task(message):
         'content': task_content, 
         'done': False,
         'remind_time': None,
-        'reminded': False
+        'reminded': False,
+        'progress_percent': 0
     })
     save_data()
     
@@ -1312,6 +1321,60 @@ def mark_done(message):
             bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[user_id])}")
     except (IndexError, ValueError):
         bot.reply_to(message, "⚠️ Vui lòng nhập số thứ tự công việc.\n\nVí dụ: /done 1")
+
+# Lệnh /progress để cập nhật tiến độ
+@bot.message_handler(commands=['progress'])
+def update_progress(message):
+    user_id = get_user_id(message)
+    update_user_chat_mapping(message)
+    
+    if user_id not in user_tasks or not user_tasks[user_id]:
+        bot.reply_to(message, "📭 Danh sách công việc của bạn đang trống!")
+        return
+    
+    try:
+        parts = message.text.split()
+        if len(parts) < 3:
+            bot.reply_to(message, 
+                "⚠️ Vui lòng nhập đúng định dạng:\n\n"
+                "/progress [số] [%]\n\n"
+                "Ví dụ:\n"
+                "/progress 1 50\n"
+                "/progress 2 75")
+            return
+        
+        task_number = int(parts[1])
+        progress = int(parts[2])
+        
+        if task_number < 1 or task_number > len(user_tasks[user_id]):
+            bot.reply_to(message, f"⚠️ Số thứ tự không hợp lệ. Vui lòng chọn từ 1 đến {len(user_tasks[user_id])}")
+            return
+        
+        if progress < 0 or progress > 100:
+            bot.reply_to(message, "⚠️ Tiến độ phải từ 0 đến 100%")
+            return
+        
+        # Update progress
+        task_idx = task_number - 1
+        user_tasks[user_id][task_idx]['progress_percent'] = progress
+        
+        # Auto mark as done if 100%
+        if progress == 100:
+            user_tasks[user_id][task_idx]['done'] = True
+        
+        save_data()
+        
+        task_content = user_tasks[user_id][task_idx]['content']
+        bot.reply_to(message, 
+            f"📊 Đã cập nhật tiến độ!\n\n"
+            f"📌 Task: {task_content}\n"
+            f"📈 Tiến độ: {get_progress_bar(progress)}")
+        
+    except (IndexError, ValueError) as e:
+        bot.reply_to(message, 
+            "⚠️ Lỗi định dạng!\n\n"
+            "Sử dụng: /progress [số] [%]\n"
+            "Ví dụ: /progress 1 50")
 
 # Lệnh /remind để đặt nhắc nhở
 @bot.message_handler(commands=['remind'])
@@ -3431,6 +3494,41 @@ def callback_handler(call):
             )
             bot.answer_callback_query(call.id)
         
+        elif action == "progress":
+            # Hiển thị menu chọn progress
+            task_content = user_tasks[user_id][task_idx]['content']
+            current_progress = user_tasks[user_id][task_idx].get('progress_percent', 0)
+            
+            markup = types.InlineKeyboardMarkup(row_width=3)
+            
+            # Progress options
+            progress_options = [0, 25, 50, 75, 100]
+            btn_row = []
+            for progress in progress_options:
+                label = f"{'✅ ' if progress == current_progress else ''}{progress}%"
+                btn_row.append(types.InlineKeyboardButton(label, callback_data=f"set_progress_{task_idx}_{progress}"))
+                if len(btn_row) == 3:
+                    markup.row(*btn_row)
+                    btn_row = []
+            if btn_row:
+                markup.row(*btn_row)
+            
+            # Back button
+            btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
+            markup.add(btn_back)
+            
+            bot.edit_message_text(
+                f"📊 **CẬP NHẬT TIẾN ĐỘ**\n\n"
+                f"Task: {task_content[:50]}\n"
+                f"Hiện tại: {get_progress_bar(current_progress)}\n\n"
+                f"Chọn tiến độ mới:",
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=markup,
+                parse_mode='Markdown'
+            )
+            bot.answer_callback_query(call.id)
+        
         elif action == "delete":
             deleted_task = user_tasks[user_id].pop(task_idx)
             save_data()
@@ -3444,6 +3542,27 @@ def callback_handler(call):
         elif action == "back":
             show_task_list(user_id, chat_id, call.message.message_id)
             bot.answer_callback_query(call.id)
+    
+    # Set progress handlers
+    elif call.data.startswith("set_progress_"):
+        parts = call.data.split("_")
+        task_idx = int(parts[2])
+        progress = int(parts[3])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
+            return
+        
+        # Update progress
+        user_tasks[user_id][task_idx]['progress_percent'] = progress
+        
+        # Auto mark as done if 100%
+        if progress == 100:
+            user_tasks[user_id][task_idx]['done'] = True
+        
+        save_data()
+        bot.answer_callback_query(call.id, f"📊 Đã cập nhật: {progress}%")
+        show_task_list(user_id, chat_id, call.message.message_id)
     
     # Calendar picker handlers
     elif call.data.startswith("calendar_"):
@@ -3781,6 +3900,13 @@ def callback_handler(call):
         else:
             bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
 
+def get_progress_bar(progress):
+    """Tạo progress bar từ % tiến độ"""
+    filled = int(progress / 10)
+    empty = 10 - filled
+    bar = "█" * filled + "░" * empty
+    return f"{bar} {progress}%"
+
 def show_task_list(user_id, chat_id, message_id=None):
     """Hiển thị danh sách task với các nút action"""
     if user_id not in user_tasks or not user_tasks[user_id]:
@@ -3796,6 +3922,11 @@ def show_task_list(user_id, chat_id, message_id=None):
             status = "✅" if task['done'] else "⏳"
             task_text = f"{idx+1}. {status} {task['content']}"
             
+            # Hiển thị progress bar nếu có
+            if task.get('progress_percent') is not None:
+                progress = task['progress_percent']
+                task_text += f"\n   📊 {get_progress_bar(progress)}"
+            
             if task.get('remind_time'):
                 user_time = get_user_time(user_id, task['remind_time'])
                 remind_str = user_time.strftime("%d/%m %H:%M")
@@ -3807,6 +3938,7 @@ def show_task_list(user_id, chat_id, message_id=None):
             btn_row = []
             if not task['done']:
                 btn_row.append(types.InlineKeyboardButton(f"✅ {idx+1}", callback_data=f"task_done_{idx}"))
+                btn_row.append(types.InlineKeyboardButton(f"📊 {idx+1}", callback_data=f"task_progress_{idx}"))
                 btn_row.append(types.InlineKeyboardButton(f"⏰ {idx+1}", callback_data=f"task_remind_{idx}"))
             btn_row.append(types.InlineKeyboardButton(f"🗑️ {idx+1}", callback_data=f"task_delete_{idx}"))
             markup.row(*btn_row)
@@ -3887,7 +4019,8 @@ def handle_user_input(message):
             'content': task_content,
             'done': False,
             'remind_time': None,
-            'reminded': False
+            'reminded': False,
+            'progress_percent': 0
         })
         save_data()
         
