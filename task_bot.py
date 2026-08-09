@@ -3600,6 +3600,10 @@ def callback_handler(call):
             if btn_row:
                 markup.row(*btn_row)
             
+            # Nút nhập thủ công
+            btn_manual = types.InlineKeyboardButton("✏️ Nhập thủ công (0-100%)", callback_data=f"manual_progress_{task_idx}")
+            markup.add(btn_manual)
+            
             # Back button
             btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
             markup.add(btn_back)
@@ -3629,6 +3633,38 @@ def callback_handler(call):
         elif action == "back":
             show_task_list(user_id, chat_id, call.message.message_id)
             bot.answer_callback_query(call.id)
+    
+    # Manual progress input
+    elif call.data.startswith("manual_progress_"):
+        parts = call.data.split("_")
+        task_idx = int(parts[2])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
+            return
+        
+        # Set state to wait for manual progress input
+        user_states[user_id] = f"manual_progress_input_{task_idx}"
+        
+        task_content = user_tasks[user_id][task_idx]['content']
+        current_progress = user_tasks[user_id][task_idx].get('progress_percent', 0)
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_cancel)
+        
+        bot.edit_message_text(
+            f"✏️ **NHẬP TIẾN ĐỘ THỦ CÔNG**\n\n"
+            f"Task: {task_content[:50]}\n"
+            f"Hiện tại: {get_progress_bar(current_progress)}\n\n"
+            f"Nhập số phần trăm tiến độ (0-100):\n"
+            f"Ví dụ: 95",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id)
     
     # Set progress handlers
     elif call.data.startswith("set_progress_"):
@@ -4187,11 +4223,26 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
 
 def get_progress_bar(progress):
-    """Tạo progress bar từ % tiến độ"""
+    """Tạo progress bar từ % tiến độ với màu sắc theo mức độ"""
     filled = int(progress / 10)
     empty = 10 - filled
     bar = "█" * filled + "░" * empty
-    return f"{bar} {progress}%"
+    
+    # Chọn emoji và màu theo mức tiến độ
+    if progress == 100:
+        emoji = "🎉"  # Hoàn thành
+        color_text = "🟢"  # Xanh lá
+    elif progress >= 75:
+        emoji = "💪"  # Sắp xong
+        color_text = "🔵"  # Xanh dương
+    elif progress >= 50:
+        emoji = "📈"  # Đang tốt
+        color_text = "🟡"  # Vàng
+    else:
+        emoji = "🚀"  # Mới bắt đầu
+        color_text = "🔴"  # Đỏ
+    
+    return f"{color_text} {bar} {progress}% {emoji}"
 
 def show_task_list_for_sharing(user_id, chat_id, message_id, selected_indices=None):
     """Hiển thị danh sách task với checkbox để chọn"""
@@ -4531,6 +4582,46 @@ def handle_user_input(message):
                 f"❌ Lỗi khi gửi:\n{str(e)}\n\n"
                 f"Có thể người nhận đã block bot hoặc chưa start bot.")
             user_states[user_id] = None
+    
+    # Manual progress input
+    elif state.startswith("manual_progress_input_"):
+        state_parts = state.split("_")
+        task_idx = int(state_parts[3])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.reply_to(message, "❌ Task không tồn tại!")
+            user_states[user_id] = None
+            return
+        
+        # Parse progress input
+        try:
+            progress = int(message.text.strip())
+            if progress < 0 or progress > 100:
+                bot.reply_to(message, "⚠️ Tiến độ phải từ 0 đến 100%. Vui lòng nhập lại:")
+                return
+        except ValueError:
+            bot.reply_to(message, "⚠️ Vui lòng nhập số từ 0-100. Ví dụ: 95")
+            return
+        
+        # Set state to ask for note
+        user_states[user_id] = f"progress_note_{task_idx}_{progress}"
+        
+        task_content = user_tasks[user_id][task_idx]['content']
+        markup = types.InlineKeyboardMarkup()
+        btn_skip = types.InlineKeyboardButton("⏭️ Bỏ qua (không ghi chú)", callback_data=f"skip_progress_note_{task_idx}_{progress}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_skip)
+        markup.add(btn_cancel)
+        
+        bot.reply_to(message,
+            f"📝 **THÊM GHI CHÚ CẬP NHẬT**\n\n"
+            f"Task: {task_content[:50]}\n"
+            f"Tiến độ: {progress}%\n\n"
+            f"Nhập nội dung chi tiết về cập nhật này:\n"
+            f"(Ví dụ: Đã hoàn thành phân tích requirements)",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
     
     # Progress note input
     elif state.startswith("progress_note_"):
