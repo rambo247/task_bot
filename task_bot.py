@@ -4226,21 +4226,27 @@ def get_progress_bar(progress):
     """Tạo progress bar từ % tiến độ với màu sắc theo mức độ"""
     filled = int(progress / 10)
     empty = 10 - filled
-    bar = "█" * filled + "░" * empty
     
-    # Chọn emoji và màu theo mức tiến độ
+    # Chọn emoji, màu text và màu thanh bar theo mức tiến độ
     if progress == 100:
         emoji = "🎉"  # Hoàn thành
         color_text = "🟢"  # Xanh lá
+        bar_filled = "🟩"  # Khối xanh lá
     elif progress >= 75:
         emoji = "💪"  # Sắp xong
         color_text = "🔵"  # Xanh dương
+        bar_filled = "🟦"  # Khối xanh dương
     elif progress >= 50:
         emoji = "📈"  # Đang tốt
         color_text = "🟡"  # Vàng
+        bar_filled = "🟨"  # Khối vàng
     else:
         emoji = "🚀"  # Mới bắt đầu
         color_text = "🔴"  # Đỏ
+        bar_filled = "🟥"  # Khối đỏ
+    
+    # Tạo thanh bar với màu sắc
+    bar = bar_filled * filled + "⬜" * empty
     
     return f"{color_text} {bar} {progress}% {emoji}"
 
