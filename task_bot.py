@@ -4643,28 +4643,24 @@ def get_progress_bar(progress):
     filled = int(progress / 10)
     empty = 10 - filled
     
-    # Chọn emoji, màu text và màu thanh bar theo mức tiến độ
+    # Chọn emoji và màu thanh bar theo mức tiến độ
     if progress == 100:
         emoji = "🎉"  # Hoàn thành
-        color_text = "🟢"  # Xanh lá
         bar_filled = "🟩"  # Khối xanh lá
     elif progress >= 75:
         emoji = "💪"  # Sắp xong
-        color_text = "🔵"  # Xanh dương
         bar_filled = "🟦"  # Khối xanh dương
     elif progress >= 50:
         emoji = "📈"  # Đang tốt
-        color_text = "🟡"  # Vàng
         bar_filled = "🟨"  # Khối vàng
     else:
         emoji = "🚀"  # Mới bắt đầu
-        color_text = "🔴"  # Đỏ
         bar_filled = "🟥"  # Khối đỏ
     
     # Tạo thanh bar với màu sắc
     bar = bar_filled * filled + "⬜" * empty
     
-    return f"{color_text} {bar} {progress}% {emoji}"
+    return f"{bar} {progress}% {emoji}"
 
 def show_task_list_for_sharing(user_id, chat_id, message_id, selected_indices=None):
     """Hiển thị danh sách task với checkbox để chọn"""
