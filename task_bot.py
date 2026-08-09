@@ -1835,6 +1835,9 @@ def update_progress(message):
         # Auto mark as done if 100%
         if progress == 100:
             user_tasks[user_id][task_idx]['done'] = True
+            # Update status to "Hoàn thành" if it exists (for AI tasks)
+            if 'status' in user_tasks[user_id][task_idx]:
+                user_tasks[user_id][task_idx]['status'] = 'Hoàn thành'
         
         save_data()
         
@@ -4147,6 +4150,9 @@ def callback_handler(call):
         # Auto mark as done if 100%
         if progress == 100:
             user_tasks[user_id][task_idx]['done'] = True
+            # Update status to "Hoàn thành" if it exists (for AI tasks)
+            if 'status' in user_tasks[user_id][task_idx]:
+                user_tasks[user_id][task_idx]['status'] = 'Hoàn thành'
         
         # Clear state
         user_states[user_id] = None
@@ -5085,6 +5091,9 @@ def handle_user_input(message):
         # Auto mark as done if 100%
         if progress == 100:
             user_tasks[user_id][task_idx]['done'] = True
+            # Update status to "Hoàn thành" if it exists (for AI tasks)
+            if 'status' in user_tasks[user_id][task_idx]:
+                user_tasks[user_id][task_idx]['status'] = 'Hoàn thành'
         
         # Clear state
         user_states[user_id] = None
