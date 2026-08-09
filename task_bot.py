@@ -5346,6 +5346,10 @@ def handle_user_input(message):
     state = user_states[user_id]
     print(f"Handling user input, state: {state}, text: {message.text}")
     
+    # Bỏ qua nếu là lệnh (để command handler xử lý)
+    if message.text and message.text.startswith('/'):
+        return
+    
     # Xử lý nút Hủy trong ReplyKeyboard (chỉ cho state có ReplyKeyboard)
     if message.text == "❌ Hủy" and state.startswith("waiting_share_contact_"):
         user_states[user_id] = None
