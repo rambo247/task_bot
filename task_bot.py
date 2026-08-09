@@ -4366,28 +4366,102 @@ def callback_handler(call):
     
     # View progress detail
     elif call.data.startswith("task_detail_"):
-        parts = call.data.split("_")
-        task_idx = int(parts[2])
-        
-        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
-            bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
-            return
-        
-        task = user_tasks[user_id][task_idx]
-        updates = task.get('progress_updates', [])
-        
-        if not updates:
-            # Show message instead of just popup
+        try:
+            parts = call.data.split("_")
+            task_idx = int(parts[2])
+            print(f"📝 [task_detail] user_id: {user_id}, task_idx: {task_idx}")
+            
+            if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+                print(f"❌ [task_detail] Task not found: user_id={user_id}, task_idx={task_idx}")
+                bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
+                return
+            
+            task = user_tasks[user_id][task_idx]
+            updates = task.get('progress_updates', [])
+            
+            if not updates:
+                # Show message instead of just popup
+                # Remove old progress line from content if exists
+                task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', task['content'])
+                
+                text = f"📝 **LỊCH SỬ CẬP NHẬT TIẾN ĐỘ**\n\n"
+                text += f"📌 Task: {task_content}\n"
+                text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
+                text += "ℹ️ Chưa có lịch sử cập nhật.\n\n"
+                text += "💡 _Hãy cập nhật tiến độ bằng cách nhấn nút 📊_"
+                
+                markup = types.InlineKeyboardMarkup()
+                btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
+                markup.add(btn_back)
+                
+                bot.edit_message_text(
+                    text,
+                    chat_id=chat_id,
+                    message_id=call.message.message_id,
+                    reply_markup=markup,
+                    parse_mode='Markdown'
+                )
+                bot.answer_callback_query(call.id)
+                return
+            
+            # Build history text
             # Remove old progress line from content if exists
             task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', task['content'])
             
             text = f"📝 **LỊCH SỬ CẬP NHẬT TIẾN ĐỘ**\n\n"
             text += f"📌 Task: {task_content}\n"
             text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
-            text += "ℹ️ Chưa có lịch sử cập nhật.\n\n"
-            text += "💡 _Hãy cập nhật tiến độ bằng cách nhấn nút 📊_"
+            text += f"📜 **Lịch sử ({len(updates)} cập nhật):**\n\n"
+            
+            # Show ALL updates (newest first)
+            # Smart truncation if too many to fit in one message
+            max_chars = 3500  # Leave room for buttons and header
+            history_text = ""
+            updates_shown = 0
+            
+            for idx, update in enumerate(reversed(updates)):
+                timestamp = datetime.fromisoformat(update['timestamp'])
+                user_time = get_user_time(user_id, timestamp)
+                time_str = user_time.strftime("%d/%m %H:%M")
+                
+                old = update.get('old_progress', 0)
+                new = update['progress']
+                delta = new - old
+                
+                actual_idx = len(updates) - idx
+                update_text = f"{actual_idx}. {time_str}\n"
+                update_text += f"   {old}% → {new}% ({'+' if delta >= 0 else ''}{delta}%)\n"
+                if update.get('note'):
+                    note = update['note']
+                    # Truncate long notes
+                    if len(note) > 100:
+                        note = note[:97] + "..."
+                    update_text += f"   💬 {note}\n"
+                update_text += "\n"
+                
+                # Check if adding this update would exceed limit
+                if len(text + history_text + update_text) > max_chars and updates_shown > 0:
+                    break
+                
+                history_text += update_text
+                updates_shown += 1
+            
+            text += history_text
+            
+            if updates_shown < len(updates):
+                text += f"\n_Hiển thị {updates_shown}/{len(updates)} cập nhật (giới hạn độ dài tin nhắn)_"
+            
+            # Check if there are any notes to delete
+            has_notes = any(u.get('note') for u in updates)
             
             markup = types.InlineKeyboardMarkup()
+            # Nút thêm ghi chú mới
+            btn_add_note = types.InlineKeyboardButton("💬 Thêm ghi chú", callback_data=f"task_note_{task_idx}")
+            markup.add(btn_add_note)
+            
+            if has_notes:
+                btn_delete = types.InlineKeyboardButton("🗑️ Xóa ghi chú", callback_data=f"delete_notes_menu_{task_idx}")
+                markup.add(btn_delete)
             btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
             markup.add(btn_back)
             
@@ -4399,77 +4473,13 @@ def callback_handler(call):
                 parse_mode='Markdown'
             )
             bot.answer_callback_query(call.id)
-            return
+            print(f"✅ [task_detail] Successfully displayed history for task {task_idx}")
         
-        # Build history text
-        # Remove old progress line from content if exists
-        task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', task['content'])
-        
-        text = f"📝 **LỊCH SỬ CẬP NHẬT TIẾN ĐỘ**\n\n"
-        text += f"📌 Task: {task_content}\n"
-        text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
-        text += f"📜 **Lịch sử ({len(updates)} cập nhật):**\n\n"
-        
-        # Show ALL updates (newest first)
-        # Smart truncation if too many to fit in one message
-        max_chars = 3500  # Leave room for buttons and header
-        history_text = ""
-        updates_shown = 0
-        
-        for idx, update in enumerate(reversed(updates)):
-            timestamp = datetime.fromisoformat(update['timestamp'])
-            user_time = get_user_time(user_id, timestamp)
-            time_str = user_time.strftime("%d/%m %H:%M")
-            
-            old = update.get('old_progress', 0)
-            new = update['progress']
-            delta = new - old
-            
-            actual_idx = len(updates) - idx
-            update_text = f"{actual_idx}. {time_str}\n"
-            update_text += f"   {old}% → {new}% ({'+' if delta >= 0 else ''}{delta}%)\n"
-            if update.get('note'):
-                note = update['note']
-                # Truncate long notes
-                if len(note) > 100:
-                    note = note[:97] + "..."
-                update_text += f"   💬 {note}\n"
-            update_text += "\n"
-            
-            # Check if adding this update would exceed limit
-            if len(text + history_text + update_text) > max_chars and updates_shown > 0:
-                break
-            
-            history_text += update_text
-            updates_shown += 1
-        
-        text += history_text
-        
-        if updates_shown < len(updates):
-            text += f"\n_Hiển thị {updates_shown}/{len(updates)} cập nhật (giới hạn độ dài tin nhắn)_"
-        
-        # Check if there are any notes to delete
-        has_notes = any(u.get('note') for u in updates)
-        
-        markup = types.InlineKeyboardMarkup()
-        # Nút thêm ghi chú mới
-        btn_add_note = types.InlineKeyboardButton("💬 Thêm ghi chú", callback_data=f"task_note_{task_idx}")
-        markup.add(btn_add_note)
-        
-        if has_notes:
-            btn_delete = types.InlineKeyboardButton("🗑️ Xóa ghi chú", callback_data=f"delete_notes_menu_{task_idx}")
-            markup.add(btn_delete)
-        btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
-        markup.add(btn_back)
-        
-        bot.edit_message_text(
-            text,
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=markup,
-            parse_mode='Markdown'
-        )
-        bot.answer_callback_query(call.id)
+        except Exception as e:
+            print(f"❌ [task_detail] Error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            bot.answer_callback_query(call.id, f"❌ Lỗi: {str(e)}")
     
     # Delete notes menu
     elif call.data.startswith("delete_notes_menu_"):
