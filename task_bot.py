@@ -1838,7 +1838,8 @@ def update_progress(message):
         
         save_data()
         
-        task_content = user_tasks[user_id][task_idx]['content']
+        # Remove old progress line from content if exists
+        task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', user_tasks[user_id][task_idx]['content'])
         bot.reply_to(message, 
             f"✅ **Đã cập nhật tiến độ!**\n\n"
             f"📌 Task: {task_content}\n"
@@ -4239,8 +4240,11 @@ def callback_handler(call):
         
         if not updates:
             # Show message instead of just popup
+            # Remove old progress line from content if exists
+            task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', task['content'])
+            
             text = f"📝 **LỊCH SỬ CẬP NHẬT TIẾN ĐỘ**\n\n"
-            text += f"📌 Task: {task['content']}\n"
+            text += f"📌 Task: {task_content}\n"
             text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
             text += "ℹ️ Chưa có lịch sử cập nhật.\n\n"
             text += "💡 _Hãy cập nhật tiến độ bằng cách nhấn nút 📊_"
@@ -4260,8 +4264,11 @@ def callback_handler(call):
             return
         
         # Build history text
+        # Remove old progress line from content if exists
+        task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', task['content'])
+        
         text = f"📝 **LỊCH SỬ CẬP NHẬT TIẾN ĐỘ**\n\n"
-        text += f"📌 Task: {task['content']}\n"
+        text += f"📌 Task: {task_content}\n"
         text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
         text += f"📜 **Lịch sử ({len(updates)} cập nhật):**\n\n"
         
@@ -4774,7 +4781,10 @@ def show_task_list(user_id, chat_id, message_id=None):
         
         for idx, task in enumerate(user_tasks[user_id]):
             status = "✅" if task['done'] else "⏳"
-            task_text = f"{idx+1}. {status} {task['content']}"
+            
+            # Remove old progress line from content if exists
+            task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', task['content'])
+            task_text = f"{idx+1}. {status} {task_content}"
             
             # Hiển thị progress bar (luôn hiện, kể cả 0%)
             progress = task.get('progress_percent', 0)
@@ -5081,7 +5091,8 @@ def handle_user_input(message):
         
         save_data()
         
-        task_content = user_tasks[user_id][task_idx]['content']
+        # Remove old progress line from content if exists
+        task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', user_tasks[user_id][task_idx]['content'])
         
         markup = types.InlineKeyboardMarkup()
         btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
