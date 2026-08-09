@@ -4343,7 +4343,7 @@ def callback_handler(call):
         
         # Send message with contact request keyboard
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        btn_contact = types.KeyboardButton("📱 Chia sẻ danh bạ", request_contact=True)
+        btn_contact = types.KeyboardButton("📱 Mở danh bạ điện thoại", request_contact=True)
         btn_cancel = types.KeyboardButton("❌ Hủy")
         markup.add(btn_contact)
         markup.add(btn_cancel)
@@ -4351,10 +4351,11 @@ def callback_handler(call):
         # Send new message (không thể edit vì cần ReplyKeyboardMarkup)
         bot.send_message(
             chat_id,
-            f"📱 **CHỌN TỪ DANH BẠ**\n\n"
+            f"📱 **MỞ DANH BẠ ĐIỆN THOẠI**\n\n"
             f"Đã chọn {len(selected_indices)} task để chia sẻ.\n\n"
-            f"Nhấn nút bên dưới để chọn người nhận từ danh bạ điện thoại của bạn:\n\n"
-            f"💡 _Chỉ có thể gửi cho người đã có tài khoản Telegram_",
+            f"👉 **Nhấn nút bên dưới để mở danh bạ của bạn**\n\n"
+            f"👤 Chọn người nhận từ danh bạ Telegram\n"
+            f"_(Chỉ hiển thị người có tài khoản Telegram)_",
             reply_markup=markup,
             parse_mode='Markdown'
         )
@@ -4907,18 +4908,19 @@ def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
     if not user_chat_mapping:
         # Không có user nào khác
         markup = types.InlineKeyboardMarkup()
-        btn_contacts = types.InlineKeyboardButton("📱 Chọn từ danh bạ", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
-        btn_manual = types.InlineKeyboardButton("✍️ Nhập thủ công", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
+        btn_contacts = types.InlineKeyboardButton("📱 Mở danh bạ điện thoại", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
+        btn_manual = types.InlineKeyboardButton("✍️ Nhập @username", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
         btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
-        markup.row(btn_contacts, btn_manual)
-        markup.add(btn_cancel)
+        markup.add(btn_contacts)
+        markup.row(btn_manual, btn_cancel)
         
         bot.edit_message_text(
             f"📤 **CHỌN NGƯỜI NHẬN**\n\n"
             f"⚠️ Chưa có người dùng nào khác đã chat với bot.\n\n"
-            f"Bạn có thể:\n"
-            f"• Nhập thủ công @username hoặc user_id\n"
-            f"• Yêu cầu người nhận gửi /start cho bot trước",
+            f"💡 Bạn có thể:\n"
+            f"• 📱 Nhấn nút *\"Mở danh bạ điện thoại\"* để chọn từ danh bạ\n"
+            f"• ✍️ Nhập @username hoặc user_id\n"
+            f"• 🤝 Yêu cầu người nhận gửi /start cho bot",
             chat_id=chat_id,
             message_id=message_id,
             reply_markup=markup,
@@ -4936,18 +4938,19 @@ def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
     if not available_users:
         # Chỉ có mình trong danh sách
         markup = types.InlineKeyboardMarkup()
-        btn_contacts = types.InlineKeyboardButton("📱 Chọn từ danh bạ", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
-        btn_manual = types.InlineKeyboardButton("✍️ Nhập thủ công", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
+        btn_contacts = types.InlineKeyboardButton("📱 Mở danh bạ điện thoại", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
+        btn_manual = types.InlineKeyboardButton("✍️ Nhập @username", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
         btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
-        markup.row(btn_contacts, btn_manual)
-        markup.add(btn_cancel)
+        markup.add(btn_contacts)
+        markup.row(btn_manual, btn_cancel)
         
         bot.edit_message_text(
             f"📤 **CHỌN NGƯỜI NHẬN**\n\n"
             f"⚠️ Chưa có người dùng nào khác đã chat với bot.\n\n"
-            f"Bạn có thể:\n"
-            f"• Nhập thủ công @username hoặc user_id\n"
-            f"• Yêu cầu người nhận gửi /start cho bot trước",
+            f"💡 Bạn có thể:\n"
+            f"• 📱 Nhấn nút *\"Mở danh bạ điện thoại\"* để chọn từ danh bạ\n"
+            f"• ✍️ Nhập @username hoặc user_id\n"
+            f"• 🤝 Yêu cầu người nhận gửi /start cho bot",
             chat_id=chat_id,
             message_id=message_id,
             reply_markup=markup,
@@ -4992,12 +4995,14 @@ def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
         )
         markup.add(btn)
     
-    # Thêm nút chọn từ danh bạ, nhập thủ công và hủy
-    btn_contacts = types.InlineKeyboardButton("📱 Chọn từ danh bạ", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
-    btn_manual = types.InlineKeyboardButton("✍️ Nhập thủ công", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
+    # Đặt nút chọn từ danh bạ ở đầu - Nổi bật nhất
+    btn_contacts = types.InlineKeyboardButton("📱👉 Mở DANH BẠ ĐIỆN THOẠI", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
+    markup.add(btn_contacts)
+    
+    # Nút thủ công và hủy
+    btn_manual = types.InlineKeyboardButton("✍️ Nhập @username", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
     btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
-    markup.row(btn_contacts, btn_manual)
-    markup.add(btn_cancel)
+    markup.row(btn_manual, btn_cancel)
     
     bot.edit_message_text(
         text,
