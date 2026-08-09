@@ -1732,6 +1732,11 @@ def save_ai_task(user_id, task_data):
     if task_data.get('details'):
         content += f"\n📝 {task_data['details']}"
     
+    # Giới hạn độ dài content: tối đa 512 ký tự
+    max_length = 512
+    if len(content) > max_length:
+        content = content[:max_length]
+    
     # Create task in existing format
     new_task = {
         'content': content,
@@ -5387,6 +5392,12 @@ def handle_user_input(message):
         
         # Fallback: Nếu user chỉ nhập tên task đơn giản, lưu luôn
         if not context and len(message_text) > 3 and not any(keyword in message_text.lower() for keyword in ['?', 'help', 'hướng dẫn']):
+            # Giới hạn độ dài task content: tối đa 512 ký tự
+            max_length = 512
+            if len(message_text) > max_length:
+                message_text = message_text[:max_length]
+                bot.reply_to(message, f"⚠️ Nội dung quá dài! Đã cắt xuống {max_length} ký tự.")
+            
             # Lưu task đơn giản
             if user_id not in user_tasks:
                 user_tasks[user_id] = []
@@ -5415,8 +5426,10 @@ def handle_user_input(message):
             markup.add(btn_list, btn_add)
             markup.add(btn_menu)
             
+            # Truncate display text nếu quá dài (hiển thị tối đa 100 ký tự)
+            display_text = message_text if len(message_text) <= 100 else message_text[:97] + "..."
             bot.reply_to(message, 
-                f"✅ Đã thêm: '{message_text}'\n\n"
+                f"✅ Đã thêm: '{display_text}'\n\n"
                 f"Bạn muốn làm gì tiếp theo?",
                 reply_markup=markup
             )
@@ -5462,6 +5475,13 @@ def handle_user_input(message):
     # Thêm task
     elif state == "waiting_task_content":
         task_content = message.text.strip()
+        
+        # Giới hạn độ dài task content: tối đa 512 ký tự
+        max_length = 512
+        if len(task_content) > max_length:
+            task_content = task_content[:max_length]
+            bot.reply_to(message, f"⚠️ Nội dung quá dài! Đã cắt xuống {max_length} ký tự.")
+        
         if user_id not in user_tasks:
             user_tasks[user_id] = []
         
@@ -5486,8 +5506,10 @@ def handle_user_input(message):
         markup.add(btn_list, btn_add)
         markup.add(btn_menu)
         
+        # Truncate display text nếu quá dài (hiển thị tối đa 100 ký tự)
+        display_text = task_content if len(task_content) <= 100 else task_content[:97] + "..."
         bot.reply_to(message, 
-            f"✅ Đã thêm: '{task_content}'\n\n"
+            f"✅ Đã thêm: '{display_text}'\n\n"
             f"Bạn muốn làm gì tiếp theo?",
             reply_markup=markup
         )
