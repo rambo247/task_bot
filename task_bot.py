@@ -1361,7 +1361,7 @@ def show_main_menu(user_id, message_text="👋 Xin chào! Tôi là trợ lý đa
     markup.add(btn_ai, btn_enterprise)
     
     # Row 3: Quick Actions & Settings
-    btn_quick = types.InlineKeyboardButton("⚡ Thêm Nhanh", callback_data="menu_add")
+    btn_quick = types.InlineKeyboardButton("➕ Thêm Task", callback_data="menu_add")
     btn_settings = types.InlineKeyboardButton("⚙️ Cài Đặt", callback_data="category_settings")
     markup.add(btn_quick, btn_settings)
     
@@ -1385,11 +1385,14 @@ def show_tasks_menu(user_id):
     text += f"🎯 Chọn thao tác:"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
-    btn_add = types.InlineKeyboardButton("➕ Thêm task", callback_data="menu_add")
-    btn_smart = types.InlineKeyboardButton("🤖 AI Smart Add", callback_data="menu_smart_add")
+    btn_add = types.InlineKeyboardButton("➕ Thêm Task Nhanh", callback_data="menu_add")
     btn_list = types.InlineKeyboardButton("📋 Xem tất cả", callback_data="menu_list")
-    markup.add(btn_add, btn_smart)
-    markup.add(btn_list)
+    markup.add(btn_add, btn_list)
+    
+    # AI Smart Add - chỉ hiện nếu có GitHub token
+    if GITHUB_TOKEN:
+        btn_smart = types.InlineKeyboardButton("🤖 AI Smart Add", callback_data="menu_smart_add")
+        markup.add(btn_smart)
     
     if task_count > 0:
         btn_pending = types.InlineKeyboardButton("⏳ Tasks đang làm", callback_data="tasks_pending")
@@ -5366,6 +5369,43 @@ def handle_user_input(message):
         
         # Get conversation context
         context = ai_conversation_context.get(user_id, {}).get('task', {})
+        
+        # Fallback: Nếu user chỉ nhập tên task đơn giản, lưu luôn
+        if not context and len(message_text) > 3 and not any(keyword in message_text.lower() for keyword in ['?', 'help', 'hướng dẫn']):
+            # Lưu task đơn giản
+            if user_id not in user_tasks:
+                user_tasks[user_id] = []
+            
+            user_tasks[user_id].append({
+                'content': message_text,
+                'done': False,
+                'remind_time': None,
+                'reminded': False,
+                'progress_percent': 0,
+                'progress_updates': []
+            })
+            save_data()
+            
+            # Clear state
+            if user_id in ai_conversation_context:
+                del ai_conversation_context[user_id]
+            user_states[user_id] = None
+            
+            markup = types.InlineKeyboardMarkup()
+            btn_remind = types.InlineKeyboardButton("⏰ Đặt nhắc nhở", callback_data=f"task_remind_{len(user_tasks[user_id])-1}")
+            btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
+            btn_add = types.InlineKeyboardButton("➕ Thêm tiếp", callback_data="menu_add")
+            btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+            markup.add(btn_remind)
+            markup.add(btn_list, btn_add)
+            markup.add(btn_menu)
+            
+            bot.reply_to(message, 
+                f"✅ Đã thêm: '{message_text}'\n\n"
+                f"Bạn muốn làm gì tiếp theo?",
+                reply_markup=markup
+            )
+            return
         
         # Process with AI Agent
         result = ai_task_agent.process_message(message_text, context)
