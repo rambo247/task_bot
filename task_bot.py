@@ -4452,6 +4452,10 @@ def callback_handler(call):
         has_notes = any(u.get('note') for u in updates)
         
         markup = types.InlineKeyboardMarkup()
+        # Nút thêm ghi chú mới
+        btn_add_note = types.InlineKeyboardButton("💬 Thêm ghi chú", callback_data=f"task_note_{task_idx}")
+        markup.add(btn_add_note)
+        
         if has_notes:
             btn_delete = types.InlineKeyboardButton("🗑️ Xóa ghi chú", callback_data=f"delete_notes_menu_{task_idx}")
             markup.add(btn_delete)
@@ -5306,29 +5310,20 @@ def show_task_list(user_id, chat_id, message_id=None):
             
             text += task_text + "\n\n"
             
-            # Nút action cho từng task - chia thành 2 hàng
+            # Nút action cho từng task - 1 hàng
+            btn_row = []
             if not task['done']:
-                # Hàng 1: Hoàn thành, Tiến độ, Nhắc nhở
-                row1 = [
-                    types.InlineKeyboardButton(f"✅ {idx+1}", callback_data=f"task_done_{idx}"),
-                    types.InlineKeyboardButton(f"📊 {idx+1}", callback_data=f"task_progress_{idx}"),
-                    types.InlineKeyboardButton(f"⏰ {idx+1}", callback_data=f"task_remind_{idx}")
-                ]
-                markup.row(*row1)
-                
-            # Hàng 2: Ghi chú, Lịch sử, Xóa
-            row2 = [
-                types.InlineKeyboardButton(f"💬 {idx+1}", callback_data=f"task_note_{idx}"),
-                types.InlineKeyboardButton(f"📝 {idx+1}", callback_data=f"task_detail_{idx}"),
-                types.InlineKeyboardButton(f"🗑️ {idx+1}", callback_data=f"task_delete_{idx}")
-            ]
-            markup.row(*row2)
+                btn_row.append(types.InlineKeyboardButton(f"✅ {idx+1}", callback_data=f"task_done_{idx}"))
+                btn_row.append(types.InlineKeyboardButton(f"📊 {idx+1}", callback_data=f"task_progress_{idx}"))
+                btn_row.append(types.InlineKeyboardButton(f"⏰ {idx+1}", callback_data=f"task_remind_{idx}"))
+            btn_row.append(types.InlineKeyboardButton(f"💬 {idx+1}", callback_data=f"task_note_{idx}"))
+            btn_row.append(types.InlineKeyboardButton(f"📝 {idx+1}", callback_data=f"task_detail_{idx}"))
+            btn_row.append(types.InlineKeyboardButton(f"🗑️ {idx+1}", callback_data=f"task_delete_{idx}"))
+            markup.row(*btn_row)
         
         # Thêm hướng dẫn sử dụng
         text += "━━━━━━━━━━━━━━━\n"
-        text += "💡 **Hướng dẫn:**\n"
-        text += "   Hàng 1: ✅ Hoàn thành | 📊 Tiến độ | ⏰ Nhắc nhở\n"
-        text += "   Hàng 2: 💬 Ghi chú | 📝 Lịch sử | 🗑️ Xóa\n\n"
+        text += "💡 **Hướng dẫn:** ✅ Hoàn thành | 📊 Tiến độ | ⏰ Nhắc nhở | 💬 Ghi chú | 📝 Lịch sử | 🗑️ Xóa\n\n"
         
         # Nút action chung
         btn_add = types.InlineKeyboardButton("➕ Thêm mới", callback_data="menu_add")
