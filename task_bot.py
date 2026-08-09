@@ -5306,23 +5306,29 @@ def show_task_list(user_id, chat_id, message_id=None):
             
             text += task_text + "\n\n"
             
-            # Nút action cho từng task
-            btn_row = []
+            # Nút action cho từng task - chia thành 2 hàng
             if not task['done']:
-                btn_row.append(types.InlineKeyboardButton(f"✅ {idx+1}", callback_data=f"task_done_{idx}"))
-                btn_row.append(types.InlineKeyboardButton(f"📊 {idx+1}", callback_data=f"task_progress_{idx}"))
-                btn_row.append(types.InlineKeyboardButton(f"⏰ {idx+1}", callback_data=f"task_remind_{idx}"))
-            # Nút thêm ghi chú và xem chi tiết
-            btn_row.append(types.InlineKeyboardButton(f"💬 {idx+1}", callback_data=f"task_note_{idx}"))
-            btn_row.append(types.InlineKeyboardButton(f"📝 {idx+1}", callback_data=f"task_detail_{idx}"))
-            btn_row.append(types.InlineKeyboardButton(f"🗑️ {idx+1}", callback_data=f"task_delete_{idx}"))
-            markup.row(*btn_row)
+                # Hàng 1: Hoàn thành, Tiến độ, Nhắc nhở
+                row1 = [
+                    types.InlineKeyboardButton(f"✅ {idx+1}", callback_data=f"task_done_{idx}"),
+                    types.InlineKeyboardButton(f"📊 {idx+1}", callback_data=f"task_progress_{idx}"),
+                    types.InlineKeyboardButton(f"⏰ {idx+1}", callback_data=f"task_remind_{idx}")
+                ]
+                markup.row(*row1)
+                
+            # Hàng 2: Ghi chú, Lịch sử, Xóa
+            row2 = [
+                types.InlineKeyboardButton(f"💬 {idx+1}", callback_data=f"task_note_{idx}"),
+                types.InlineKeyboardButton(f"📝 {idx+1}", callback_data=f"task_detail_{idx}"),
+                types.InlineKeyboardButton(f"🗑️ {idx+1}", callback_data=f"task_delete_{idx}")
+            ]
+            markup.row(*row2)
         
         # Thêm hướng dẫn sử dụng
         text += "━━━━━━━━━━━━━━━\n"
         text += "💡 **Hướng dẫn:**\n"
-        text += "✅ Hoàn thành | 📊 Tiến độ | ⏰ Nhắc nhở\n"
-        text += "💬 Ghi chú | 📝 Lịch sử | 🗑️ Xóa\n\n"
+        text += "   Hàng 1: ✅ Hoàn thành | 📊 Tiến độ | ⏰ Nhắc nhở\n"
+        text += "   Hàng 2: 💬 Ghi chú | 📝 Lịch sử | 🗑️ Xóa\n\n"
         
         # Nút action chung
         btn_add = types.InlineKeyboardButton("➕ Thêm mới", callback_data="menu_add")
