@@ -1276,8 +1276,7 @@ def save_ai_task(user_id, task_data):
     content += f"👤 Phụ trách: {task_data['assignee']}\n"
     content += f"📅 Deadline: {task_data['deadline']}\n"
     content += f"🏷️ Nhóm: {task_data['task_group']}\n"
-    content += f"⚡ Trạng thái: {task_data['status']}\n"
-    content += f"📈 Đã hoàn thành: {task_data['progress_percent']}%"
+    content += f"⚡ Trạng thái: {task_data['status']}"
     
     if task_data.get('details'):
         content += f"\n📝 {task_data['details']}"
