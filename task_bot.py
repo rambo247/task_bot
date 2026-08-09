@@ -1277,7 +1277,7 @@ def save_ai_task(user_id, task_data):
     content += f"📅 Deadline: {task_data['deadline']}\n"
     content += f"🏷️ Nhóm: {task_data['task_group']}\n"
     content += f"⚡ Trạng thái: {task_data['status']}\n"
-    content += f"📈 Tiến độ: {task_data['progress_percent']}%"
+    content += f"📈 Đã hoàn thành: {task_data['progress_percent']}%"
     
     if task_data.get('details'):
         content += f"\n📝 {task_data['details']}"
@@ -1416,7 +1416,7 @@ def update_progress(message):
         bot.reply_to(message, 
             f"✅ **Đã cập nhật tiến độ!**\n\n"
             f"📌 Task: {task_content}\n"
-            f"📊 Tiến độ: {get_progress_bar(progress)}\n"
+            f"📊 Đã hoàn thành: {get_progress_bar(progress)}\n"
             f"💬 Ghi chú: {note}",
             parse_mode='Markdown')
         
@@ -3689,7 +3689,7 @@ def callback_handler(call):
         bot.edit_message_text(
             f"📝 **THÊM GHI CHÚ CẬP NHẬT**\n\n"
             f"Task: {task_content[:50]}\n"
-            f"Tiến độ: {progress}%\n\n"
+            f"Đã hoàn thành: {progress}%\n\n"
             f"Nhập nội dung chi tiết về cập nhật này:\n"
             f"(Ví dụ: Đã hoàn thành phân tích requirements)",
             chat_id=chat_id,
@@ -4622,7 +4622,7 @@ def handle_user_input(message):
         bot.reply_to(message,
             f"📝 **THÊM GHI CHÚ CẬP NHẬT**\n\n"
             f"Task: {task_content[:50]}\n"
-            f"Tiến độ: {progress}%\n\n"
+            f"Đã hoàn thành: {progress}%\n\n"
             f"Nhập nội dung chi tiết về cập nhật này:\n"
             f"(Ví dụ: Đã hoàn thành phân tích requirements)",
             reply_markup=markup,
@@ -4681,7 +4681,7 @@ def handle_user_input(message):
         bot.reply_to(message,
             f"✅ **Đã cập nhật tiến độ!**\n\n"
             f"📌 Task: {task_content}\n"
-            f"📊 Tiến độ: {get_progress_bar(progress)}\n"
+            f"📊 Đã hoàn thành: {get_progress_bar(progress)}\n"
             f"💬 Ghi chú: {note}",
             reply_markup=markup,
             parse_mode='Markdown'
