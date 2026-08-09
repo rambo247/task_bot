@@ -771,10 +771,17 @@ def get_user_id(message):
     return message.from_user.id
 
 def update_user_chat_mapping(message):
-    """Cập nhật mapping user_id -> chat_id để gửi reminder"""
+    """Cập nhật mapping user_id -> chat_id và thông tin user để gửi reminder và share task"""
     user_id = get_user_id(message)
     chat_id = message.chat.id
-    user_chat_mapping[user_id] = chat_id
+    
+    # Lưu đầy đủ thông tin user
+    user_chat_mapping[user_id] = {
+        'chat_id': chat_id,
+        'username': message.from_user.username or '',
+        'first_name': message.from_user.first_name or '',
+        'last_name': message.from_user.last_name or ''
+    }
 
 def get_user_timezone(user_id):
     """Lấy timezone offset của user (mặc định GMT+7)"""
@@ -961,7 +968,7 @@ def reminder_checker():
                         if remind_time <= current_time < remind_time + timedelta(minutes=1):
                             try:
                                 # Lấy chat_id từ mapping (có thể là private chat hoặc group)
-                                chat_id = user_chat_mapping.get(user_id)
+                                chat_id = user_chat_mapping.get(user_id, {}).get('chat_id')
                                 if not chat_id:
                                     print(f"No chat_id mapping for user_id {user_id}")
                                     continue
@@ -1101,7 +1108,7 @@ def auto_learning_worker():
                 # Notify user về dữ liệu mới
                 if new_items_count > 0:
                     try:
-                        chat_id = user_chat_mapping.get(owner_id)
+                        chat_id = user_chat_mapping.get(owner_id, {}).get('chat_id')
                         if chat_id:
                             notify_text = (
                                 f"🤖 **HỌC TỰ ĐỘNG**\n\n"
@@ -2953,11 +2960,20 @@ def callback_handler(call):
     chat_id = call.message.chat.id
     print(f"Received callback: {call.data} from chat_id: {chat_id}, user_id: {user_id}")
     
-    # Cập nhật mapping
-    user_chat_mapping[user_id] = chat_id
+    # Cập nhật mapping với đầy đủ thông tin
+    user_chat_mapping[user_id] = {
+        'chat_id': chat_id,
+        'username': call.from_user.username or '',
+        'first_name': call.from_user.first_name or '',
+        'last_name': call.from_user.last_name or ''
+    }
     
     # Menu chính
     if call.data == "menu_main":
+        # Clear state nếu đang trong bất kỳ input state nào
+        if user_id in user_states:
+            user_states[user_id] = None
+        
         text, markup = show_main_menu(user_id)
         try:
             # Thử edit message hiện tại
@@ -3007,6 +3023,10 @@ def callback_handler(call):
     
     # Xem danh sách
     elif call.data == "menu_list":
+        # Clear state nếu đang trong bất kỳ input state nào
+        if user_id in user_states:
+            user_states[user_id] = None
+        
         if user_id not in user_tasks or not user_tasks[user_id]:
             markup = types.InlineKeyboardMarkup()
             btn_add = types.InlineKeyboardButton("➕ Thêm công việc đầu tiên", callback_data="menu_add")
@@ -4001,6 +4021,31 @@ def callback_handler(call):
             )
             bot.answer_callback_query(call.id)
         
+        elif action == "note":
+            # Thêm ghi chú trực tiếp mà không cần cập nhật tiến độ
+            task_content = user_tasks[user_id][task_idx]['content']
+            current_progress = user_tasks[user_id][task_idx].get('progress_percent', 0)
+            
+            # Set state để nhận ghi chú
+            user_states[user_id] = f"add_task_note_{task_idx}"
+            
+            markup = types.InlineKeyboardMarkup()
+            btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+            markup.add(btn_cancel)
+            
+            bot.edit_message_text(
+                f"💬 **THÊM GHI CHÚ**\n\n"
+                f"Task: {task_content[:50]}\n"
+                f"Tiến độ: {get_progress_bar(current_progress)}\n\n"
+                f"✍️ Nhập nội dung ghi chú:\n"
+                f"(Ghi chú sẽ được thêm vào lịch sử với tiến độ hiện tại)",
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=markup,
+                parse_mode='Markdown'
+            )
+            bot.answer_callback_query(call.id)
+        
         elif action == "progress":
             # Hiển thị menu chọn progress
             task_content = user_tasks[user_id][task_idx]['content']
@@ -4199,7 +4244,7 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
     
     elif call.data.startswith("share_done_"):
-        # Done selecting, ask for recipient
+        # Done selecting, show user list
         parts = call.data.split("_")
         if len(parts) > 2:
             selected_indices = [int(x) for x in parts[2:] if x]
@@ -4210,15 +4255,50 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "⚠️ Chưa chọn task nào!")
             return
         
-        # Store selected in state
+        # Show user list to select recipient
+        show_user_list_for_sharing(user_id, chat_id, call.message.message_id, selected_indices)
+        bot.answer_callback_query(call.id)
+    
+    elif call.data.startswith("share_to_user_"):
+        # User selected from list
+        parts = call.data.split("_")
+        if len(parts) < 4:
+            bot.answer_callback_query(call.id, "❌ Lỗi dữ liệu!")
+            return
+        
+        recipient_id = int(parts[3])
+        if len(parts) > 4:
+            selected_indices = [int(x) for x in parts[4:] if x]
+        else:
+            selected_indices = []
+        
+        # Send tasks to recipient
+        send_tasks_to_recipient(user_id, chat_id, call.message.message_id, recipient_id, selected_indices)
+        bot.answer_callback_query(call.id, "✅ Đang gửi...")
+    
+    elif call.data.startswith("share_manual_input_"):
+        # Manual input option selected
+        parts = call.data.split("_")
+        if len(parts) > 3:
+            selected_indices = [int(x) for x in parts[3:] if x]
+        else:
+            selected_indices = []
+        
+        if not selected_indices:
+            bot.answer_callback_query(call.id, "❌ Lỗi: Không tìm thấy task đã chọn.")
+            return
+        
+        # Store selected in state for manual input
         user_states[user_id] = f"waiting_share_recipient_{'_'.join(map(str, selected_indices))}"
         
         markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Quay lại danh sách", callback_data=f"share_done_{'_'.join(map(str, selected_indices))}")
         btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_back)
         markup.add(btn_cancel)
         
         bot.edit_message_text(
-            f"📤 **GỬI TASK**\n\n"
+            f"📤 **GỬI TASK - NHẬP THỦ CÔNG**\n\n"
             f"Đã chọn {len(selected_indices)} task.\n\n"
             f"Nhập username người nhận:\n"
             f"• Nhập: @username\n"
@@ -4227,6 +4307,40 @@ def callback_handler(call):
             f"Ví dụ: @john_doe",
             chat_id=chat_id,
             message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id)
+    
+    elif call.data.startswith("share_from_contacts_"):
+        # Chọn từ danh bạ điện thoại
+        parts = call.data.split("_")
+        if len(parts) > 3:
+            selected_indices = [int(x) for x in parts[3:] if x]
+        else:
+            selected_indices = []
+        
+        if not selected_indices:
+            bot.answer_callback_query(call.id, "❌ Lỗi: Không tìm thấy task đã chọn.")
+            return
+        
+        # Store selected in state for contact input
+        user_states[user_id] = f"waiting_share_contact_{'_'.join(map(str, selected_indices))}"
+        
+        # Send message with contact request keyboard
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        btn_contact = types.KeyboardButton("📱 Chia sẻ danh bạ", request_contact=True)
+        btn_cancel = types.KeyboardButton("❌ Hủy")
+        markup.add(btn_contact)
+        markup.add(btn_cancel)
+        
+        # Send new message (không thể edit vì cần ReplyKeyboardMarkup)
+        bot.send_message(
+            chat_id,
+            f"📱 **CHỌN TỪ DANH BẠ**\n\n"
+            f"Đã chọn {len(selected_indices)} task để chia sẻ.\n\n"
+            f"Nhấn nút bên dưới để chọn người nhận từ danh bạ điện thoại của bạn:\n\n"
+            f"💡 _Chỉ có thể gửi cho người đã có tài khoản Telegram_",
             reply_markup=markup,
             parse_mode='Markdown'
         )
@@ -4774,6 +4888,202 @@ def format_tasks_for_sharing(user_id, task_indices):
     text += f"\n📤 Được chia sẻ bởi @PHT_TASK_BOT"
     return text
 
+def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
+    """Hiển thị danh sách người dùng để chọn người nhận task"""
+    if not user_chat_mapping:
+        # Không có user nào khác
+        markup = types.InlineKeyboardMarkup()
+        btn_contacts = types.InlineKeyboardButton("📱 Chọn từ danh bạ", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
+        btn_manual = types.InlineKeyboardButton("✍️ Nhập thủ công", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.row(btn_contacts, btn_manual)
+        markup.add(btn_cancel)
+        
+        bot.edit_message_text(
+            f"📤 **CHỌN NGƯỜI NHẬN**\n\n"
+            f"⚠️ Chưa có người dùng nào khác đã chat với bot.\n\n"
+            f"Bạn có thể:\n"
+            f"• Nhập thủ công @username hoặc user_id\n"
+            f"• Yêu cầu người nhận gửi /start cho bot trước",
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Lọc danh sách user (loại bỏ chính mình)
+    available_users = [(uid, data) for uid, data in user_chat_mapping.items() if uid != user_id]
+    
+    if not available_users:
+        # Chỉ có mình trong danh sách
+        markup = types.InlineKeyboardMarkup()
+        btn_contacts = types.InlineKeyboardButton("📱 Chọn từ danh bạ", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
+        btn_manual = types.InlineKeyboardButton("✍️ Nhập thủ công", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.row(btn_contacts, btn_manual)
+        markup.add(btn_cancel)
+        
+        bot.edit_message_text(
+            f"📤 **CHỌN NGƯỜI NHẬN**\n\n"
+            f"⚠️ Chưa có người dùng nào khác đã chat với bot.\n\n"
+            f"Bạn có thể:\n"
+            f"• Nhập thủ công @username hoặc user_id\n"
+            f"• Yêu cầu người nhận gửi /start cho bot trước",
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Hiển thị danh sách người dùng
+    text = f"📤 **CHỌN NGƯỜI NHẬN**\n\n"
+    text += f"Đã chọn {len(selected_indices)} task để chia sẻ.\n\n"
+    text += f"👥 Chọn người nhận từ danh sách:\n\n"
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    # Sắp xếp theo username hoặc first_name
+    available_users.sort(key=lambda x: (x[1].get('username', '') or x[1].get('first_name', '')).lower())
+    
+    for recipient_id, recipient_data in available_users:
+        # Tạo display name
+        username = recipient_data.get('username', '')
+        first_name = recipient_data.get('first_name', '')
+        last_name = recipient_data.get('last_name', '')
+        
+        if username:
+            display_name = f"@{username}"
+        elif first_name or last_name:
+            display_name = f"{first_name} {last_name}".strip()
+        else:
+            display_name = f"User {recipient_id}"
+        
+        # Giới hạn độ dài tên hiển thị
+        if len(display_name) > 30:
+            display_name = display_name[:27] + "..."
+        
+        btn = types.InlineKeyboardButton(
+            f"👤 {display_name}",
+            callback_data=f"share_to_user_{recipient_id}_{'_'.join(map(str, selected_indices))}"
+        )
+        markup.add(btn)
+    
+    # Thêm nút chọn từ danh bạ, nhập thủ công và hủy
+    btn_contacts = types.InlineKeyboardButton("📱 Chọn từ danh bạ", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
+    btn_manual = types.InlineKeyboardButton("✍️ Nhập thủ công", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
+    btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+    markup.row(btn_contacts, btn_manual)
+    markup.add(btn_cancel)
+    
+    bot.edit_message_text(
+        text,
+        chat_id=chat_id,
+        message_id=message_id,
+        reply_markup=markup,
+        parse_mode='Markdown'
+    )
+
+def send_tasks_to_recipient(sender_id, sender_chat_id, message_id, recipient_id, selected_indices):
+    """Gửi tasks đã chọn cho người nhận"""
+    if not selected_indices:
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
+        markup.add(btn_back)
+        
+        bot.edit_message_text(
+            "❌ Không có task nào được chọn!",
+            chat_id=sender_chat_id,
+            message_id=message_id,
+            reply_markup=markup
+        )
+        return
+    
+    # Get recipient chat_id
+    recipient_data = user_chat_mapping.get(recipient_id)
+    if not recipient_data:
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data=f"share_done_{'_'.join(map(str, selected_indices))}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_back, btn_cancel)
+        
+        bot.edit_message_text(
+            "❌ Không tìm thấy thông tin người nhận!\n\n"
+            "Người nhận cần gửi /start cho bot trước.",
+            chat_id=sender_chat_id,
+            message_id=message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        return
+    
+    recipient_chat_id = recipient_data.get('chat_id')
+    if not recipient_chat_id:
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data=f"share_done_{'_'.join(map(str, selected_indices))}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_back, btn_cancel)
+        
+        bot.edit_message_text(
+            "❌ Không tìm thấy chat_id của người nhận!",
+            chat_id=sender_chat_id,
+            message_id=message_id,
+            reply_markup=markup
+        )
+        return
+    
+    # Format and send
+    share_text = format_tasks_for_sharing(sender_id, selected_indices)
+    
+    try:
+        # Send to recipient
+        bot.send_message(recipient_chat_id, share_text, parse_mode='Markdown')
+        
+        # Confirm to sender
+        sender_name = user_chat_mapping.get(sender_id, {}).get('username', 'Unknown')
+        recipient_username = recipient_data.get('username', '')
+        recipient_first_name = recipient_data.get('first_name', '')
+        recipient_last_name = recipient_data.get('last_name', '')
+        
+        if recipient_username:
+            recipient_display = f"@{recipient_username}"
+        elif recipient_first_name or recipient_last_name:
+            recipient_display = f"{recipient_first_name} {recipient_last_name}".strip()
+        else:
+            recipient_display = f"User {recipient_id}"
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("📋 Danh sách", callback_data="menu_list")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+        markup.add(btn_back, btn_menu)
+        
+        bot.edit_message_text(
+            f"✅ **Đã gửi thành công!**\n\n"
+            f"📤 Gửi tới: {recipient_display}\n"
+            f"📦 Số task: {len(selected_indices)}\n\n"
+            f"Người nhận sẽ thấy danh sách task trong chat với bot.",
+            chat_id=sender_chat_id,
+            message_id=message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Thử lại", callback_data=f"share_done_{'_'.join(map(str, selected_indices))}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_back, btn_cancel)
+        
+        bot.edit_message_text(
+            f"❌ **Lỗi khi gửi:**\n{str(e)}\n\n"
+            f"Có thể người nhận đã block bot hoặc chưa start bot.",
+            chat_id=sender_chat_id,
+            message_id=message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+
 def show_task_list(user_id, chat_id, message_id=None):
     """Hiển thị danh sách task với các nút action"""
     if user_id not in user_tasks or not user_tasks[user_id]:
@@ -4809,10 +5119,17 @@ def show_task_list(user_id, chat_id, message_id=None):
                 btn_row.append(types.InlineKeyboardButton(f"✅ {idx+1}", callback_data=f"task_done_{idx}"))
                 btn_row.append(types.InlineKeyboardButton(f"📊 {idx+1}", callback_data=f"task_progress_{idx}"))
                 btn_row.append(types.InlineKeyboardButton(f"⏰ {idx+1}", callback_data=f"task_remind_{idx}"))
-            # Nút xem chi tiết progress (luôn hiện, kể cả khi chưa có update)
+            # Nút thêm ghi chú và xem chi tiết
+            btn_row.append(types.InlineKeyboardButton(f"💬 {idx+1}", callback_data=f"task_note_{idx}"))
             btn_row.append(types.InlineKeyboardButton(f"📝 {idx+1}", callback_data=f"task_detail_{idx}"))
             btn_row.append(types.InlineKeyboardButton(f"🗑️ {idx+1}", callback_data=f"task_delete_{idx}"))
             markup.row(*btn_row)
+        
+        # Thêm hướng dẫn sử dụng
+        text += "━━━━━━━━━━━━━━━\n"
+        text += "💡 **Hướng dẫn:**\n"
+        text += "✅ Hoàn thành | 📊 Tiến độ | ⏰ Nhắc nhở\n"
+        text += "💬 Ghi chú | 📝 Lịch sử | 🗑️ Xóa\n\n"
         
         # Nút action chung
         btn_add = types.InlineKeyboardButton("➕ Thêm mới", callback_data="menu_add")
@@ -4835,6 +5152,22 @@ def handle_user_input(message):
     update_user_chat_mapping(message)
     state = user_states[user_id]
     print(f"Handling user input, state: {state}, text: {message.text}")
+    
+    # Xử lý nút Hủy trong ReplyKeyboard (chỉ cho state có ReplyKeyboard)
+    if message.text == "❌ Hủy" and state.startswith("waiting_share_contact_"):
+        user_states[user_id] = None
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_list = types.InlineKeyboardButton("📋 Danh sách", callback_data="menu_list")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+        markup.add(btn_list, btn_menu)
+        
+        bot.reply_to(message, 
+            "❌ Đã hủy thao tác.",
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+        bot.send_message(chat_id, "Chọn hành động:", reply_markup=markup)
+        return
     
     # ============= AI COLLECTING TASK STATE =============
     if state == "ai_collecting_task":
@@ -4993,8 +5326,17 @@ def handle_user_input(message):
             bot.send_message(recipient_chat_id, share_text, parse_mode='Markdown')
             
             # Confirm to sender
-            sender_name = user_chat_mapping.get(user_id, {}).get('username', 'Unknown')
-            recipient_name = user_chat_mapping.get(recipient_id, {}).get('username', str(recipient_id))
+            recipient_data = user_chat_mapping.get(recipient_id, {})
+            recipient_username = recipient_data.get('username', '')
+            recipient_first_name = recipient_data.get('first_name', '')
+            recipient_last_name = recipient_data.get('last_name', '')
+            
+            if recipient_username:
+                recipient_display = f"@{recipient_username}"
+            elif recipient_first_name or recipient_last_name:
+                recipient_display = f"{recipient_first_name} {recipient_last_name}".strip()
+            else:
+                recipient_display = f"User {recipient_id}"
             
             markup = types.InlineKeyboardMarkup()
             btn_back = types.InlineKeyboardButton("📋 Danh sách", callback_data="menu_list")
@@ -5003,7 +5345,7 @@ def handle_user_input(message):
             
             bot.reply_to(message,
                 f"✅ **Đã gửi thành công!**\n\n"
-                f"📤 Gửi tới: @{recipient_name}\n"
+                f"📤 Gửi tới: {recipient_display}\n"
                 f"📦 Số task: {len(selected_indices)}\n\n"
                 f"Người nhận sẽ thấy danh sách task trong chat với bot.",
                 reply_markup=markup,
@@ -5053,6 +5395,56 @@ def handle_user_input(message):
             f"Đã hoàn thành: {progress}%\n\n"
             f"Nhập nội dung chi tiết về cập nhật này:\n"
             f"(Ví dụ: Đã hoàn thành phân tích requirements)",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+    
+    # Add task note (without changing progress)
+    elif state.startswith("add_task_note_"):
+        state_parts = state.split("_")
+        task_idx = int(state_parts[3])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.reply_to(message, "❌ Task không tồn tại!")
+            user_states[user_id] = None
+            return
+        
+        note = message.text.strip()
+        current_progress = user_tasks[user_id][task_idx].get('progress_percent', 0)
+        
+        # Initialize progress_updates if not exists
+        if 'progress_updates' not in user_tasks[user_id][task_idx]:
+            user_tasks[user_id][task_idx]['progress_updates'] = []
+        
+        # Add note record (progress unchanged)
+        update_record = {
+            'timestamp': datetime.now().isoformat(),
+            'progress': current_progress,
+            'old_progress': current_progress,
+            'note': note
+        }
+        user_tasks[user_id][task_idx]['progress_updates'].append(update_record)
+        print(f"💬 [add_task_note handler] Added note at {current_progress}% (total: {len(user_tasks[user_id][task_idx]['progress_updates'])})]")
+        
+        # Clear state
+        user_states[user_id] = None
+        save_data()
+        
+        # Remove old progress line from content if exists
+        task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', user_tasks[user_id][task_idx]['content'])
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_list = types.InlineKeyboardButton("📋 Xem danh sách", callback_data="menu_list")
+        btn_detail = types.InlineKeyboardButton("📝 Xem lịch sử", callback_data=f"task_detail_{task_idx}")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+        markup.add(btn_list)
+        markup.add(btn_detail, btn_menu)
+        
+        bot.reply_to(message,
+            f"✅ **Đã thêm ghi chú!**\n\n"
+            f"📌 Task: {task_content}\n"
+            f"📊 Tiến độ: {get_progress_bar(current_progress)}\n"
+            f"💬 Ghi chú: {note}",
             reply_markup=markup,
             parse_mode='Markdown'
         )
@@ -5802,6 +6194,186 @@ def transcribe_audio(audio_file_path):
     except Exception as e:
         print(f"Error transcribing audio: {e}")
         return None
+
+@bot.message_handler(content_types=['contact'])
+def handle_contact_message(message):
+    """Xử lý khi người dùng gửi contact từ danh bạ"""
+    user_id = get_user_id(message)
+    chat_id = message.chat.id
+    update_user_chat_mapping(message)
+    
+    # Check if user is in share contact state
+    state = user_states.get(user_id)
+    
+    if state and state.startswith("waiting_share_contact_"):
+        # Đang trong quá trình chọn contact để share task
+        state_parts = state.split("_")
+        if len(state_parts) > 3:
+            selected_indices = [int(x) for x in state_parts[3:] if x]
+        else:
+            selected_indices = []
+        
+        if not selected_indices:
+            bot.reply_to(message, "❌ Lỗi: Không tìm thấy task đã chọn.", 
+                        reply_markup=types.ReplyKeyboardRemove())
+            user_states[user_id] = None
+            return
+        
+        # Get contact info
+        contact = message.contact
+        recipient_id = contact.user_id
+        
+        if not recipient_id:
+            markup = types.InlineKeyboardMarkup()
+            btn_retry = types.InlineKeyboardButton("🔄 Thử lại", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
+            btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+            markup.add(btn_retry, btn_cancel)
+            
+            bot.reply_to(message,
+                "⚠️ **Không thể lấy User ID**\n\n"
+                "Contact này chưa có tài khoản Telegram hoặc không cho phép tìm kiếm theo số điện thoại.\n\n"
+                "Vui lòng chọn người khác hoặc nhập thủ công @username.",
+                reply_markup=types.ReplyKeyboardRemove(),
+                parse_mode='Markdown'
+            )
+            bot.send_message(chat_id, "Chọn hành động:", reply_markup=markup)
+            user_states[user_id] = None
+            return
+        
+        # Check if contact is the sender themselves
+        if recipient_id == user_id:
+            markup = types.InlineKeyboardMarkup()
+            btn_retry = types.InlineKeyboardButton("🔄 Chọn lại", callback_data=f"share_from_contacts_{'_'.join(map(str, selected_indices))}")
+            btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+            markup.add(btn_retry, btn_cancel)
+            
+            bot.reply_to(message,
+                "⚠️ Bạn không thể gửi task cho chính mình!\n\n"
+                "Vui lòng chọn người khác.",
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+            bot.send_message(chat_id, "Chọn hành động:", reply_markup=markup)
+            user_states[user_id] = None
+            return
+        
+        # Check if recipient has chatted with bot
+        if recipient_id not in user_chat_mapping:
+            # Save contact info to mapping
+            user_chat_mapping[recipient_id] = {
+                'chat_id': None,  # Will be updated when they start the bot
+                'username': '',
+                'first_name': contact.first_name or '',
+                'last_name': contact.last_name or ''
+            }
+            save_data()
+            
+            recipient_name = f"{contact.first_name or ''} {contact.last_name or ''}".strip() or str(recipient_id)
+            
+            markup = types.InlineKeyboardMarkup()
+            btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data=f"share_done_{'_'.join(map(str, selected_indices))}")
+            btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+            markup.add(btn_back, btn_cancel)
+            
+            bot.reply_to(message,
+                f"⚠️ **Chưa thể gửi**\n\n"
+                f"👤 {recipient_name} chưa từng chat với bot.\n\n"
+                f"Yêu cầu họ gửi /start cho @PHT_TASK_BOT trước, sau đó bạn có thể thử lại.",
+                reply_markup=types.ReplyKeyboardRemove(),
+                parse_mode='Markdown'
+            )
+            bot.send_message(chat_id, "Chọn hành động:", reply_markup=markup)
+            user_states[user_id] = None
+            return
+        
+        # All checks passed, send tasks
+        user_states[user_id] = None
+        
+        # Remove keyboard first
+        bot.send_message(chat_id, "✅ Đã chọn contact, đang gửi...", 
+                        reply_markup=types.ReplyKeyboardRemove())
+        
+        # Send tasks
+        send_tasks_to_recipient_from_contact(user_id, chat_id, recipient_id, selected_indices, contact)
+    
+    else:
+        # Not in share state, just acknowledge
+        bot.reply_to(message, 
+            "👤 Đã nhận contact!\n\n"
+            "💡 Bạn có thể sử dụng tính năng này khi chia sẻ task bằng cách:\n"
+            "1. Chọn task cần chia sẻ (/share)\n"
+            "2. Chọn 'Chọn từ danh bạ'\n"
+            "3. Gửi contact người nhận",
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+
+def send_tasks_to_recipient_from_contact(sender_id, sender_chat_id, recipient_id, selected_indices, contact):
+    """Gửi tasks cho người nhận được chọn từ contact"""
+    if not selected_indices:
+        bot.send_message(sender_chat_id, "❌ Không có task nào được chọn!")
+        return
+    
+    # Get recipient data
+    recipient_data = user_chat_mapping.get(recipient_id)
+    if not recipient_data or not recipient_data.get('chat_id'):
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data=f"share_done_{'_'.join(map(str, selected_indices))}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_back, btn_cancel)
+        
+        recipient_name = f"{contact.first_name or ''} {contact.last_name or ''}".strip() or str(recipient_id)
+        
+        bot.send_message(
+            sender_chat_id,
+            f"⚠️ **Không thể gửi**\n\n"
+            f"👤 {recipient_name} chưa từng chat với bot.\n\n"
+            f"Yêu cầu họ gửi /start cho bot trước.",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        return
+    
+    recipient_chat_id = recipient_data.get('chat_id')
+    
+    # Format and send tasks
+    share_text = format_tasks_for_sharing(sender_id, selected_indices)
+    
+    try:
+        # Send to recipient
+        bot.send_message(recipient_chat_id, share_text, parse_mode='Markdown')
+        
+        # Display name from contact
+        recipient_name = f"{contact.first_name or ''} {contact.last_name or ''}".strip() or str(recipient_id)
+        if contact.phone_number:
+            recipient_name += f" ({contact.phone_number})"
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("📋 Danh sách", callback_data="menu_list")
+        btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+        markup.add(btn_back, btn_menu)
+        
+        bot.send_message(
+            sender_chat_id,
+            f"✅ **Đã gửi thành công!**\n\n"
+            f"📤 Gửi tới: {recipient_name}\n"
+            f"📦 Số task: {len(selected_indices)}\n\n"
+            f"Người nhận sẽ thấy danh sách task trong chat với bot.",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        
+    except Exception as e:
+        markup = types.InlineKeyboardMarkup()
+        btn_back = types.InlineKeyboardButton("🔙 Thử lại", callback_data=f"share_done_{'_'.join(map(str, selected_indices))}")
+        btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_back, btn_cancel)
+        
+        bot.send_message(
+            sender_chat_id,
+            f"❌ **Lỗi khi gửi:**\n{str(e)}\n\n"
+            f"Có thể người nhận đã block bot.",
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
 
 @bot.message_handler(content_types=['voice'])
 def handle_voice_message(message):
