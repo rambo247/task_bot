@@ -4407,12 +4407,13 @@ def callback_handler(call):
         text += f"📊 Hiện tại: {get_progress_bar(task.get('progress_percent', 0))}\n\n"
         text += f"📜 **Lịch sử ({len(updates)} cập nhật):**\n\n"
         
-        # Show ALL updates (newest first) - no limit
-        # If too many, show latest 20
-        display_updates = updates[-20:] if len(updates) > 20 else updates
-        start_index = len(updates) - len(display_updates)
+        # Show ALL updates (newest first)
+        # Smart truncation if too many to fit in one message
+        max_chars = 3500  # Leave room for buttons and header
+        history_text = ""
+        updates_shown = 0
         
-        for idx, update in enumerate(reversed(display_updates)):
+        for idx, update in enumerate(reversed(updates)):
             timestamp = datetime.fromisoformat(update['timestamp'])
             user_time = get_user_time(user_id, timestamp)
             time_str = user_time.strftime("%d/%m %H:%M")
@@ -4422,16 +4423,35 @@ def callback_handler(call):
             delta = new - old
             
             actual_idx = len(updates) - idx
-            text += f"{actual_idx}. {time_str}\n"
-            text += f"   {old}% → {new}% ({'+' if delta >= 0 else ''}{delta}%)\n"
+            update_text = f"{actual_idx}. {time_str}\n"
+            update_text += f"   {old}% → {new}% ({'+' if delta >= 0 else ''}{delta}%)\n"
             if update.get('note'):
-                text += f"   💬 {update['note']}\n"
-            text += "\n"
+                note = update['note']
+                # Truncate long notes
+                if len(note) > 100:
+                    note = note[:97] + "..."
+                update_text += f"   💬 {note}\n"
+            update_text += "\n"
+            
+            # Check if adding this update would exceed limit
+            if len(text + history_text + update_text) > max_chars and updates_shown > 0:
+                break
+            
+            history_text += update_text
+            updates_shown += 1
         
-        if len(updates) > 20:
-            text += f"\n_Hiển thị 20/{len(updates)} cập nhật gần nhất_"
+        text += history_text
+        
+        if updates_shown < len(updates):
+            text += f"\n_Hiển thị {updates_shown}/{len(updates)} cập nhật (giới hạn độ dài tin nhắn)_"
+        
+        # Check if there are any notes to delete
+        has_notes = any(u.get('note') for u in updates)
         
         markup = types.InlineKeyboardMarkup()
+        if has_notes:
+            btn_delete = types.InlineKeyboardButton("🗑️ Xóa ghi chú", callback_data=f"delete_notes_menu_{task_idx}")
+            markup.add(btn_delete)
         btn_back = types.InlineKeyboardButton("🔙 Quay lại", callback_data="menu_list")
         markup.add(btn_back)
         
@@ -4443,6 +4463,149 @@ def callback_handler(call):
             parse_mode='Markdown'
         )
         bot.answer_callback_query(call.id)
+    
+    # Delete notes menu
+    elif call.data.startswith("delete_notes_menu_"):
+        parts = call.data.split("_")
+        task_idx = int(parts[3])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
+            return
+        
+        task = user_tasks[user_id][task_idx]
+        updates = task.get('progress_updates', [])
+        
+        # Filter updates that have notes
+        notes_updates = [(idx, u) for idx, u in enumerate(updates) if u.get('note')]
+        
+        if not notes_updates:
+            bot.answer_callback_query(call.id, "❌ Không có ghi chú nào để xóa!")
+            return
+        
+        task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', task['content'])
+        
+        text = f"🗑️ **XÓA GHI CHÚ**\n\n"
+        text += f"📌 Task: {task_content}\n\n"
+        text += f"Chọn ghi chú muốn xóa:\n\n"
+        
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        
+        # Show notes with delete buttons (newest first)
+        for update_idx, update in reversed(notes_updates[-10:]):  # Show last 10 notes
+            timestamp = datetime.fromisoformat(update['timestamp'])
+            user_time = get_user_time(user_id, timestamp)
+            time_str = user_time.strftime("%d/%m %H:%M")
+            
+            note = update['note']
+            if len(note) > 40:
+                note = note[:37] + "..."
+            
+            btn_text = f"🗑️ {time_str}: {note}"
+            btn = types.InlineKeyboardButton(btn_text, callback_data=f"delete_note_{task_idx}_{update_idx}")
+            markup.add(btn)
+        
+        if len(notes_updates) > 10:
+            text += f"\n_Hiển thị 10/{len(notes_updates)} ghi chú gần nhất_\n"
+        
+        btn_back = types.InlineKeyboardButton("🔙 Quay lại lịch sử", callback_data=f"task_detail_{task_idx}")
+        markup.add(btn_back)
+        
+        bot.edit_message_text(
+            text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=markup,
+            parse_mode='Markdown'
+        )
+        bot.answer_callback_query(call.id)
+    
+    # Delete specific note
+    elif call.data.startswith("delete_note_"):
+        parts = call.data.split("_")
+        task_idx = int(parts[2])
+        update_idx = int(parts[3])
+        
+        if user_id not in user_tasks or task_idx >= len(user_tasks[user_id]):
+            bot.answer_callback_query(call.id, "❌ Task không tồn tại!")
+            return
+        
+        task = user_tasks[user_id][task_idx]
+        updates = task.get('progress_updates', [])
+        
+        if update_idx >= len(updates):
+            bot.answer_callback_query(call.id, "❌ Ghi chú không tồn tại!")
+            return
+        
+        # Get note info before deletion
+        deleted_update = updates[update_idx]
+        deleted_note = deleted_update.get('note', '')
+        
+        # Delete the update
+        del updates[update_idx]
+        save_data()
+        
+        bot.answer_callback_query(call.id, "✅ Đã xóa ghi chú!")
+        
+        # Return to delete menu
+        # Recheck if there are still notes
+        has_notes = any(u.get('note') for u in updates)
+        
+        if has_notes:
+            # Refresh delete menu
+            task_content = re.sub(r'\n?📈 Đã hoàn thành: \d+%', '', task['content'])
+            
+            text = f"🗑️ **XÓA GHI CHÚ**\n\n"
+            text += f"📌 Task: {task_content}\n\n"
+            text += f"✅ Đã xóa: {deleted_note[:50]}...\n\n"
+            text += f"Chọn ghi chú khác muốn xóa:\n\n"
+            
+            markup = types.InlineKeyboardMarkup(row_width=1)
+            
+            notes_updates = [(idx, u) for idx, u in enumerate(updates) if u.get('note')]
+            
+            for update_idx, update in reversed(notes_updates[-10:]):
+                timestamp = datetime.fromisoformat(update['timestamp'])
+                user_time = get_user_time(user_id, timestamp)
+                time_str = user_time.strftime("%d/%m %H:%M")
+                
+                note = update['note']
+                if len(note) > 40:
+                    note = note[:37] + "..."
+                
+                btn_text = f"🗑️ {time_str}: {note}"
+                btn = types.InlineKeyboardButton(btn_text, callback_data=f"delete_note_{task_idx}_{update_idx}")
+                markup.add(btn)
+            
+            if len(notes_updates) > 10:
+                text += f"\n_Hiển thị 10/{len(notes_updates)} ghi chú gần nhất_\n"
+            
+            btn_back = types.InlineKeyboardButton("🔙 Quay lại lịch sử", callback_data=f"task_detail_{task_idx}")
+            markup.add(btn_back)
+            
+            bot.edit_message_text(
+                text,
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=markup,
+                parse_mode='Markdown'
+            )
+        else:
+            # No more notes, return to task detail
+            text = f"✅ **Đã xóa ghi chú cuối cùng!**\n\n"
+            text += f"Quay lại xem lịch sử..."
+            
+            markup = types.InlineKeyboardMarkup()
+            btn_back = types.InlineKeyboardButton("🔙 Xem lịch sử", callback_data=f"task_detail_{task_idx}")
+            markup.add(btn_back)
+            
+            bot.edit_message_text(
+                text,
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=markup,
+                parse_mode='Markdown'
+            )
     
     # Calendar picker handlers
     elif call.data.startswith("calendar_"):
