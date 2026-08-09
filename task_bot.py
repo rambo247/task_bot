@@ -1653,35 +1653,13 @@ def smart_add_task(message):
     message_text = content[1].strip() if len(content) > 1 else ""
     
     if not message_text:
-        # Hướng dẫn sử dụng
+        # Bắt đầu hỏi trực tiếp
         user_states[user_id] = "ai_collecting_task"
         ai_conversation_context[user_id] = {'task': {}, 'state': 'collecting', 'last_update': datetime.now()}
         
-        help_msg = (
-            "🤖 *AI Task Manager - Chế độ thông minh*\n\n"
-            "Tôi sẽ giúp bạn tạo công việc một cách chi tiết!\n\n"
-            "📝 Bạn có thể:\n"
-            "• Nhập đầy đủ thông tin ngay\n"
-            "• Nhập từng phần, tôi sẽ hỏi thêm\n\n"
-            "📋 Thông tin cần có:\n"
-            "1️⃣ Tên công việc\n"
-            "2️⃣ Người phụ trách\n"
-            "3️⃣ Deadline (hạn chót)\n"
-            "4️⃣ Nhóm/Dự án (tùy chọn)\n"
-            "5️⃣ Trạng thái (tùy chọn)\n"
-            "6️⃣ Chi tiết (tùy chọn)\n\n"
-            "💡 Ví dụ:\n"
-            "```\n"
-            "Tên: Thiết kế landing page\n"
-            "Người làm: Nguyễn Văn A\n"
-            "Deadline: 15/08/2026\n"
-            "Nhóm: Marketing\n"
-            "```\n\n"
-            "Hoặc đơn giản:\n"
-            "`Tạo chiến dịch marketing mới`\n\n"
-            "➡️ Hãy bắt đầu bằng cách cho tôi biết công việc của bạn!"
-        )
-        bot.reply_to(message, help_msg, parse_mode='Markdown')
+        # Hỏi trực tiếp tên công việc
+        help_msg = "📝 Bạn muốn tạo công việc gì? Vui lòng cho tôi biết tên công việc nhé!"
+        bot.reply_to(message, help_msg)
         return
     
     # Process với AI Agent
@@ -3012,24 +2990,14 @@ def callback_handler(call):
         user_states[user_id] = "ai_collecting_task"
         ai_conversation_context[user_id] = {'task': {}, 'state': 'collecting', 'last_update': datetime.now()}
         
-        help_msg = (
-            "🤖 *AI Task Manager - Chế độ thông minh*\n\n"
-            "Tôi sẽ giúp bạn tạo công việc chi tiết!\n\n"
-            "📋 Thông tin cần có:\n"
-            "• Tên công việc\n"
-            "• Người phụ trách\n"
-            "• Deadline\n\n"
-            "💡 Ví dụ:\n"
-            "`Thiết kế landing page cho Nguyễn Văn A, deadline 15/08`\n\n"
-            "➡️ Hãy cho tôi biết công việc của bạn!"
-        )
+        # Hỏi trực tiếp tên công việc
+        help_msg = "📝 Bạn muốn tạo công việc gì? Vui lòng cho tôi biết tên công việc nhé!"
         
         bot.edit_message_text(
             help_msg,
             chat_id=chat_id,
             message_id=call.message.message_id,
-            reply_markup=markup,
-            parse_mode='Markdown'
+            reply_markup=markup
         )
         bot.answer_callback_query(call.id)
     
