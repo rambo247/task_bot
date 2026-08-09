@@ -705,7 +705,21 @@ def load_data():
                         elif key == 'user_states':
                             user_states = data
                         elif key == 'user_chat_mapping':
+                            # Migration: Convert old format (int) to new format (dict)
+                            migrated_count = 0
+                            for uid, value in data.items():
+                                if isinstance(value, int):
+                                    # Old format: user_chat_mapping[uid] = chat_id (int)
+                                    data[uid] = {
+                                        'chat_id': value,
+                                        'username': '',
+                                        'first_name': '',
+                                        'last_name': ''
+                                    }
+                                    migrated_count += 1
                             user_chat_mapping = data
+                            if migrated_count > 0:
+                                print(f"   🔄 Migrated {migrated_count} user_chat_mapping entries to new format")
                         elif key == 'ai_knowledge_base':
                             ai_knowledge_base = data
                         elif key == 'user_ai_chat_mode':
@@ -4912,8 +4926,12 @@ def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
         )
         return
     
-    # Lọc danh sách user (loại bỏ chính mình)
-    available_users = [(uid, data) for uid, data in user_chat_mapping.items() if uid != user_id]
+    # Lọc danh sách user (loại bỏ chính mình và chỉ lấy data hợp lệ)
+    available_users = [
+        (uid, data) 
+        for uid, data in user_chat_mapping.items() 
+        if uid != user_id and isinstance(data, dict)
+    ]
     
     if not available_users:
         # Chỉ có mình trong danh sách
@@ -4945,7 +4963,11 @@ def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
     markup = types.InlineKeyboardMarkup(row_width=1)
     
     # Sắp xếp theo username hoặc first_name
-    available_users.sort(key=lambda x: (x[1].get('username', '') or x[1].get('first_name', '')).lower())
+    # Kiểm tra data là dict trước khi truy cập
+    available_users.sort(key=lambda x: (
+        x[1].get('username', '') if isinstance(x[1], dict) else '' or 
+        x[1].get('first_name', '') if isinstance(x[1], dict) else ''
+    ).lower())
     
     for recipient_id, recipient_data in available_users:
         # Tạo display name
@@ -5268,9 +5290,9 @@ def handle_user_input(message):
         # Case 1: @username
         if recipient_input.startswith('@'):
             username = recipient_input[1:]
-            # Search in user_chat_mapping
+            # Search in user_chat_mapping (chỉ tìm trong data hợp lệ)
             for uid, data in user_chat_mapping.items():
-                if data.get('username', '').lower() == username.lower():
+                if isinstance(data, dict) and data.get('username', '').lower() == username.lower():
                     recipient_id = uid
                     break
             
