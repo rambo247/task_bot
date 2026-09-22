@@ -4285,6 +4285,34 @@ def callback_handler(call):
         show_user_list_for_sharing(user_id, chat_id, call.message.message_id, selected_indices)
         bot.answer_callback_query(call.id)
     
+    elif call.data.startswith("share_export_"):
+        # Xuất task ra dạng text để user tự Forward cho bất kỳ ai (không cần người nhận join bot)
+        parts = call.data.split("_")
+        if len(parts) > 2:
+            selected_indices = [int(x) for x in parts[2:] if x]
+        else:
+            selected_indices = []
+        
+        if not selected_indices:
+            bot.answer_callback_query(call.id, "⚠️ Chưa chọn task nào!")
+            return
+        
+        share_text = format_tasks_for_sharing(user_id, selected_indices)
+        
+        markup = types.InlineKeyboardMarkup()
+        btn_menu = types.InlineKeyboardButton("🏠 Menu chính", callback_data="menu_main")
+        markup.add(btn_menu)
+        
+        bot.send_message(
+            chat_id,
+            f"👇 **Tin nhắn dưới đây có thể chia sẻ cho BẤT KỲ AI**, kể cả người chưa dùng bot:\n\n"
+            f"👉 Nhấn giữ tin nhắn → chọn **Forward** để gửi qua Telegram, Zalo, SMS, email...",
+            parse_mode='Markdown'
+        )
+        bot.send_message(chat_id, share_text, parse_mode='Markdown')
+        bot.send_message(chat_id, "✅ Đã xuất xong! Forward tin nhắn phía trên để chia sẻ.", reply_markup=markup)
+        bot.answer_callback_query(call.id, "✅ Đã xuất, hãy Forward tin nhắn!")
+    
     elif call.data.startswith("share_to_user_"):
         # User selected from list
         parts = call.data.split("_")
@@ -5063,14 +5091,17 @@ def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
     if not user_chat_mapping:
         # Không có user nào khác
         markup = types.InlineKeyboardMarkup()
+        btn_export = types.InlineKeyboardButton("📤 Chia sẻ ra ngoài (Forward)", callback_data=f"share_export_{'_'.join(map(str, selected_indices))}")
         btn_manual = types.InlineKeyboardButton("✍️ Nhập @username", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
         btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_export)
         markup.row(btn_manual, btn_cancel)
         
         bot.edit_message_text(
             f"📤 **CHỌN NGƯỜI NHẬN**\n\n"
             f"⚠️ Chưa có người dùng nào khác đã chat với bot.\n\n"
             f"💡 Bạn có thể:\n"
+            f"• 📤 Chia sẻ ra ngoài (không cần người nhận join bot)\n"
             f"• ✍️ Nhập @username hoặc user_id của người nhận\n"
             f"• 🤝 Yêu cầu người nhận gửi /start cho bot trước\n\n"
             f"ℹ️ _Telegram không cho phép bot truy cập danh bạ điện thoại của bạn, nên chỉ có thể gửi tới người đã từng chat với bot._",
@@ -5091,14 +5122,17 @@ def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
     if not available_users:
         # Chỉ có mình trong danh sách
         markup = types.InlineKeyboardMarkup()
+        btn_export = types.InlineKeyboardButton("📤 Chia sẻ ra ngoài (Forward)", callback_data=f"share_export_{'_'.join(map(str, selected_indices))}")
         btn_manual = types.InlineKeyboardButton("✍️ Nhập @username", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
         btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
+        markup.add(btn_export)
         markup.row(btn_manual, btn_cancel)
         
         bot.edit_message_text(
             f"📤 **CHỌN NGƯỜI NHẬN**\n\n"
             f"⚠️ Chưa có người dùng nào khác đã chat với bot.\n\n"
             f"💡 Bạn có thể:\n"
+            f"• 📤 Chia sẻ ra ngoài (không cần người nhận join bot)\n"
             f"• ✍️ Nhập @username hoặc user_id của người nhận\n"
             f"• 🤝 Yêu cầu người nhận gửi /start cho bot trước\n\n"
             f"ℹ️ _Telegram không cho phép bot truy cập danh bạ điện thoại của bạn, nên chỉ có thể gửi tới người đã từng chat với bot._",
@@ -5146,7 +5180,9 @@ def show_user_list_for_sharing(user_id, chat_id, message_id, selected_indices):
         )
         markup.add(btn)
     
-    # Nút thủ công và hủy
+    # Nút xuất ra ngoài, thủ công và hủy
+    btn_export = types.InlineKeyboardButton("📤 Chia sẻ ra ngoài (Forward)", callback_data=f"share_export_{'_'.join(map(str, selected_indices))}")
+    markup.add(btn_export)
     btn_manual = types.InlineKeyboardButton("✍️ Nhập @username", callback_data=f"share_manual_input_{'_'.join(map(str, selected_indices))}")
     btn_cancel = types.InlineKeyboardButton("❌ Hủy", callback_data="menu_list")
     markup.row(btn_manual, btn_cancel)
