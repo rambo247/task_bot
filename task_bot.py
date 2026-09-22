@@ -6978,6 +6978,7 @@ if __name__ == "__main__":
         print(f"📱 Bot name: @{bot_info.username}")
         print(f"🆔 Bot ID: {bot_info.id}")
         print("✅ Bot đã sẵn sàng và đang lắng nghe tin nhắn...")
-        bot.infinity_polling()
+        # Chỉ định rõ allowed_updates để reset giới hạn cũ từ webhook (thiếu callback_query -> nút bấm không hoạt động)
+        bot.infinity_polling(allowed_updates=['message', 'edited_message', 'channel_post', 'edited_channel_post', 'callback_query', 'contact'])
     except Exception as e:
         print(f"❌ Lỗi khởi động bot: {e}")
