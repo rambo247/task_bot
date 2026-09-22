@@ -492,6 +492,10 @@ user_timezones = {}
 # Lưu trữ trạng thái người dùng (đang thêm task, đặt reminder, etc.)
 user_states = {}
 
+# Dữ liệu tạm cho luồng xác nhận import text / scrape web (không gắn vào user_states vì dict không cho set attribute)
+temp_import_data = {}
+temp_scraped_data = {}
+
 # Track cancelled scraping operations
 scraping_cancelled = {}
 
@@ -3468,11 +3472,11 @@ def callback_handler(call):
     # Scrape Confirmation - YES (HỌC BỊ ĐỘNG)
     elif call.data == "scrape_confirm_yes":
         # Retrieve temporary scraped data
-        if not hasattr(user_states, '_temp_scraped_data') or user_id not in user_states._temp_scraped_data:
+        if user_id not in temp_scraped_data:
             bot.answer_callback_query(call.id, "⚠️ Dữ liệu đã hết hạn. Thử lại!", show_alert=True)
             return
         
-        temp_data = user_states._temp_scraped_data[user_id]
+        temp_data = temp_scraped_data[user_id]
         url = temp_data['url']
         data = temp_data['data']
         org_id = temp_data['org_id']
@@ -3496,7 +3500,7 @@ def callback_handler(call):
         save_data()
         
         # Clean up
-        del user_states._temp_scraped_data[user_id]
+        del temp_scraped_data[user_id]
         user_states[user_id] = None
         
         # Success message
@@ -3535,8 +3539,8 @@ def callback_handler(call):
     # Scrape Confirmation - NO
     elif call.data == "scrape_confirm_no":
         # Clean up temporary data
-        if hasattr(user_states, '_temp_scraped_data') and user_id in user_states._temp_scraped_data:
-            del user_states._temp_scraped_data[user_id]
+        if user_id in temp_scraped_data:
+            del temp_scraped_data[user_id]
         
         user_states[user_id] = None
         
@@ -3559,11 +3563,11 @@ def callback_handler(call):
     # Import Text Confirmation - YES
     elif call.data == "import_confirm_yes":
         # Retrieve temporary import data
-        if not hasattr(user_states, '_temp_import_data') or user_id not in user_states._temp_import_data:
+        if user_id not in temp_import_data:
             bot.answer_callback_query(call.id, "⚠️ Dữ liệu đã hết hạn. Thử lại!", show_alert=True)
             return
         
-        temp_data = user_states._temp_import_data[user_id]
+        temp_data = temp_import_data[user_id]
         qa_pairs = temp_data['qa_pairs']
         results = temp_data['results']
         
@@ -3580,7 +3584,7 @@ def callback_handler(call):
         save_data()
         
         # Clean up
-        del user_states._temp_import_data[user_id]
+        del temp_import_data[user_id]
         user_states[user_id] = None
         
         # Format results
@@ -3610,8 +3614,8 @@ def callback_handler(call):
     # Import Text Confirmation - NO
     elif call.data == "import_confirm_no":
         # Clean up temporary data
-        if hasattr(user_states, '_temp_import_data') and user_id in user_states._temp_import_data:
-            del user_states._temp_import_data[user_id]
+        if user_id in temp_import_data:
+            del temp_import_data[user_id]
         
         user_states[user_id] = None
         
@@ -6267,9 +6271,7 @@ def handle_user_input(message):
         preview_text += "❓ **Bạn có muốn thêm dữ liệu này vào Knowledge Base?**"
         
         # Store import data temporarily
-        if not hasattr(user_states, '_temp_import_data'):
-            user_states._temp_import_data = {}
-        user_states._temp_import_data[user_id] = {
+        temp_import_data[user_id] = {
             'import_data': import_data,
             'qa_pairs': qa_pairs,
             'results': results,
